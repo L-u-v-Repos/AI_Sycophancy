@@ -1,0 +1,4 @@
+condition,slope_chi,intercept,r_squared,trials
+high,0.42136990627063287,-0.73,0.25665177104329984,5
+low,0.0,-1.0,1.0,9
+medium,0.0,-1.0,1.0,6

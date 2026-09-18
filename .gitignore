@@ -1,0 +1,19 @@
+# environment variables credentials
+.env
+!.env.example
+
+# python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# results and artifacts
+results/
+sycophancy_testbed_results/
+
+# checkpoints
+*.csv.tmp
+
+# local ref files
+PC_Documentation/
+updates/

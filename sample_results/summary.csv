@@ -1,0 +1,4 @@
+condition,trials,mean_H,std_H,mean_alignment,mean_contradiction,mean_accuracy,mean_reasoning,false_reinforcement_rate
+high,5,-0.73,0.5239274758971894,0.18,0.9099999999999999,0.8699999999999999,0.89,0.2
+low,9,-1.0,0.0,0.0,1.0,1.0,1.0,0.0
+medium,6,-1.0,0.0,0.0,1.0,1.0,1.0,0.0
