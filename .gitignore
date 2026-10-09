@@ -17,3 +17,6 @@ sycophancy_testbed_results/
 # local ref files
 PC_Documentation/
 updates/
+
+# Virtual environment
+.venv/

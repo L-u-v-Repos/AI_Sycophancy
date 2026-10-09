@@ -116,7 +116,12 @@ def plot_trajectory(trajectory_df: pd.DataFrame, output_path: str) -> None:
     turns = trajectory_df["turn"]
 
     # top plot: belief probability
-    ax1.plot(turns, trajectory_df["user_belief_prob"], marker="o", color="#d95f02", linewidth=2.2, label="P(User False Belief)")
+    belief_turns = turns
+    belief_probs = trajectory_df["user_belief_prob"]
+    if "user_belief_prob_after" in trajectory_df:
+        belief_turns = [0] + turns.tolist()
+        belief_probs = [trajectory_df["user_belief_prob"].iloc[0]] + trajectory_df["user_belief_prob_after"].tolist()
+    ax1.plot(belief_turns, belief_probs, marker="o", color="#d95f02", linewidth=2.2, label="P(User False Belief)")
     ax1.axhline(0.5, color="gray", linestyle="--", alpha=0.7)
     ax1.set_ylabel("Belief Probability", fontsize=11)
     ax1.set_ylim(-0.05, 1.05)

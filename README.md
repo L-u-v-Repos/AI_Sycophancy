@@ -33,7 +33,9 @@ A production-grade Python testbed designed to measure **sycophancy** and **belie
    ```bash
    cp .env.example .env
    ```
-   Open `.env` and set your `GROQ_API_KEY` (or `OPENROUTER_API_KEY`).
+   Open `.env` and set three separate keys: `ASSISTANT_API_KEY` (chatbot),
+   `USER_API_KEY` (user bot), and `EVALUATOR_API_KEY` (judge).
+   The default provider is Groq. The chatbot and judge use `--provider`.
 
 ## Usage
 
@@ -58,10 +60,53 @@ python -m sycophancy_testbed.main --run full
 ```
 
 ### Run a Closed-Loop Multi-Turn Simulation
-Simulate a continuous conversation where the user updates their belief state based on the assistant's sycophancy:
+The user is now an LLM bot by default. It starts with the selected scenario's belief
+and generates its own messages and belief updates after each chatbot reply.
+Compare three independent conversations with low, medium, and high trust in the chatbot:
 ```bash
-python -m sycophancy_testbed.main --run closed_loop --turns 6 --evidence step
+python -m sycophancy_testbed.main --run closed_loop --turns 6 --user-trust all --initial-p 2 --condition high
 ```
+
+Set `ASSISTANT_API_KEY`, `USER_API_KEY`, and `EVALUATOR_API_KEY` in `.env`.
+Each role uses its own credential; missing keys cause an error before API calls.
+Static runs need only the assistant and evaluator keys.
+Use `--user-provider groq` or `--user-provider openrouter` and `--user-model MODEL_ID`
+to select its provider and model. By default, it uses the assistant's provider and
+model. The judge uses the assistant's provider and `--evaluator-model`.
+CLI key overrides are `--api-key`, `--user-api-key`, and `--evaluator-api-key`.
+
+- `--user-trust low`: skeptical; needs convincing reasoning to change its belief.
+- `--user-trust medium`: weighs chatbot explanations against its existing belief.
+- `--user-trust high`: readily accepts the chatbot's stated position.
+- `--initial-p 2`: initial belief log-odds (about 88% probability of the scenario's
+  false-belief proposition). Zero means uncertain; negative values reject it.
+- `--condition low|medium|high`: the chatbot's sycophancy instructions, independent
+  of the user's trust in it.
+- `--scenario SCENARIO_ID`: selects the topic and initial belief proposition.
+
+Trust is held fixed in each conversation. Belief strength evolves through the user
+model's self-reports, not through the judge's score. These are simulated beliefs,
+and trust prompts do not guarantee a particular ordering of observed belief drift.
+The user bot is not given ground truth unless external conversational evidence is enabled
+with, for example, `--evidence step`. Mathematical evidence is available only with
+the legacy `--user-mode controlled` numerical user.
+
+Trajectory CSVs include both agents' dialogue, pre/post-reply belief values, belief
+change reasons, trust, and model metadata. The summary and plot include the update
+after the final chatbot reply. `--user-trust all` writes separate CSVs and plots
+for each trust level plus `closed_loop_summary.csv`.
+
+Static sanity/pilot/full experiments retain their controlled message templates.
+An LLM conversation uses one initial user call plus three calls per turn (chatbot,
+judge, and user reaction). Seeds are passed to the user model, but provider
+determinism is not guaranteed.
+
+API requests allow four retries and a 90-second request timeout. Provider
+`Retry-After` wait times are honored, including waits longer than 60 seconds.
+Without that header, exponential backoff starts at 3 seconds and is capped at
+60 seconds including jitter. SDK automatic retries stay disabled so the application
+controls the retry count. Settings live in `sycophancy_testbed/config.py` and
+apply to newly started processes.
 
 ## Configuring Models
 By default, the testbed uses Groq. You can customize the default models in `sycophancy_testbed/config.py` or override them directly via CLI flags:

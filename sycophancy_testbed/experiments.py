@@ -15,7 +15,7 @@ from .config import (
 )
 from .evaluator import evaluate_response
 from .metrics import stance_from_logodds, short_hash
-from .user_agent import ControlledUser, generate_user_message
+from .user_agent import ControlledUser, LLMUser, generate_user_message
 
 
 def make_evidence_schedule(
@@ -46,6 +46,7 @@ def run_static_trial(
     condition: str,
     p_user: float,
     assistant_temperature: float = 0.0,
+    evaluator_client=None,
 ) -> Dict[str, Any]:
     if condition not in SYSTEM_PROMPTS:
         raise ValueError(f"Unknown condition '{condition}'. Must be one of: {list(SYSTEM_PROMPTS.keys())}")
@@ -83,7 +84,7 @@ def run_static_trial(
 
     # score the assistant response with the evaluator judge
     eval_result = evaluate_response(
-        client=client,
+        client=evaluator_client if evaluator_client is not None else client,
         model=evaluator_model,
         scenario=scenario,
         user_msg=user_msg,
@@ -136,6 +137,7 @@ def run_static_experiment(
     max_workers: int = 2,
     checkpoint_path: Optional[str] = None,
     delay_between_calls: float = 0.5,
+    evaluator_client=None,
 ) -> pd.DataFrame:
     if not scenarios:
         raise ValueError("No scenarios provided to run_static_experiment.")
@@ -178,6 +180,7 @@ def run_static_experiment(
             scenario=job["scenario"],
             condition=job["condition"],
             p_user=job["p_user"],
+            evaluator_client=evaluator_client,
         )
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -220,6 +223,11 @@ def run_closed_loop(
     evidence_strength: float = 0.0,
     user_noise_std: float = 0.03,
     seed: Optional[int] = None,
+    user_mode: str = "llm",
+    user_client=None,
+    user_model: Optional[str] = None,
+    user_trust: str = "medium",
+    evaluator_client=None,
 ) -> pd.DataFrame:
     """
     Run a closed-loop multi-turn belief drift simulation.
@@ -243,6 +251,11 @@ def run_closed_loop(
     if evidence_mode == "none" and evidence_type != "none":
         evidence_mode = "conversational"
 
+    if user_mode not in ("llm", "controlled"):
+        raise ValueError("user_mode must be llm or controlled.")
+    if user_mode == "llm" and evidence_mode == "mathematical":
+        raise ValueError("LLM users require conversational evidence; use --user-mode controlled for mathematical evidence.")
+
     # initialize the simulated user's belief state
     user = ControlledUser(
         initial_p=initial_p,
@@ -251,6 +264,12 @@ def run_closed_loop(
         noise_std=user_noise_std,
         seed=seed,
     )
+    pending_user = None
+    if user_mode == "llm":
+        user = LLMUser(client=user_client if user_client is not None else client,
+                       model=user_model or assistant_model, scenario=scenario,
+                       initial_p=initial_p, trust=user_trust, seed=seed)
+        pending_user = user.start()
     evidence_schedule = make_evidence_schedule(turns, evidence_type if evidence_type != "none" else "constant", evidence_strength)
     system_prompt = SYSTEM_PROMPTS[condition]
 
@@ -272,12 +291,17 @@ def run_closed_loop(
         if evidence_mode == "conversational" and ext_evidence_strength > 0:
             evidence_text_for_msg = f"Independent sources report: {scenario.ground_truth}"
 
-        user_turn_msg = generate_user_message(
-            scenario=scenario,
-            p_user=current_p,
-            evidence_text=evidence_text_for_msg,
-            user_stance=current_stance,
-        )
+        if user_mode == "llm":
+            user_turn_msg = pending_user["message"]
+            if evidence_text_for_msg:
+                user_turn_msg += "\n\nNote: " + evidence_text_for_msg
+                # Both agents see the same external evidence in the conversation.
+                user.messages.append({"role": "user", "content": evidence_text_for_msg})
+        else:
+            user_turn_msg = generate_user_message(
+                scenario=scenario, p_user=current_p,
+                evidence_text=evidence_text_for_msg, user_stance=current_stance,
+            )
 
         conversation_history.append({"role": "user", "content": user_turn_msg})
 
@@ -296,7 +320,7 @@ def run_closed_loop(
 
         # evaluate how sycophantic this turn's reply was
         eval_turn = evaluate_response(
-            client=client,
+            client=evaluator_client if evaluator_client is not None else client,
             model=evaluator_model,
             scenario=scenario,
             user_msg=user_turn_msg,
@@ -308,10 +332,26 @@ def run_closed_loop(
         # (+1 = bot fully endorsed false belief, -1 = bot fully contradicted it)
         # mathematical evidence: only subtracts from belief state, NOT added to dialogue text
         math_evidence = ext_evidence_strength if evidence_mode == "mathematical" else 0.0
-        user.update(bot_stance=eval_turn["H"], external_evidence=math_evidence)
+        belief_reason = ""
+        if user_mode == "llm":
+            pending_user = user.observe(assistant_turn_reply)
+            belief_reason = pending_user["reason"]
+        else:
+            user.update(bot_stance=eval_turn["H"], external_evidence=math_evidence)
 
         trajectory.append({
             "turn": t + 1,
+            "scenario_id": scenario.id,
+            "initial_belief": scenario.false_belief,
+            "initial_p": initial_p,
+            "condition": condition,
+            "user_mode": user_mode,
+            "user_model": (user_model or assistant_model) if user_mode == "llm" else "",
+            "user_trust": user_trust if user_mode == "llm" else "",
+            "user_p_after": user.p,
+            "user_belief_prob_after": user.belief_probability,
+            "user_belief_reason": belief_reason,
+            "user_reaction": pending_user["message"] if pending_user else "",
             "user_p": current_p,
             "user_stance": current_stance,
             "user_conviction": current_conviction,
@@ -335,6 +375,7 @@ def sanity_check_trial(
     assistant_model: str,
     evaluator_model: str,
     scenario: Optional[Scenario] = None,
+    evaluator_client=None,
 ) -> Dict[str, Any]:
     # run one trial each for low and high conditions to verify the whole pipeline works
     if scenario is None:
@@ -348,6 +389,7 @@ def sanity_check_trial(
         scenario=scenario,
         condition="low",
         p_user=2.0,
+        evaluator_client=evaluator_client,
     )
     print(f"  low  → H={res_low['H']:.2f}, alignment={res_low['alignment_with_false_belief']:.2f}")
 
@@ -358,6 +400,7 @@ def sanity_check_trial(
         scenario=scenario,
         condition="high",
         p_user=2.0,
+        evaluator_client=evaluator_client,
     )
     print(f"  high → H={res_high['H']:.2f}, alignment={res_high['alignment_with_false_belief']:.2f}")
 

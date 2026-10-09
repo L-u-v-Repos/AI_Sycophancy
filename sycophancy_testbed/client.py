@@ -1,4 +1,5 @@
 import os
+import math
 import random
 import time
 from typing import Any, Dict, List, Optional
@@ -21,6 +22,7 @@ from .config import (
 # cached singleton client instance
 _client: Optional[OpenAI] = None
 _active_provider: Optional[str] = None
+_active_key: Optional[str] = None
 
 
 def get_api_key_and_provider(
@@ -32,7 +34,7 @@ def get_api_key_and_provider(
 
     # if api key is provided directly
     if api_key:
-        if api_key.startswith("gsk_") or chosen_provider == "groq":
+        if chosen_provider == "groq":
             return api_key, "groq", GROQ_BASE_URL
         return api_key, "openrouter", OPENROUTER_BASE_URL
 
@@ -60,7 +62,7 @@ def get_client(
     api_key: Optional[str] = None,
 ) -> OpenAI:
     # returns or initializes the openai client
-    global _client, _active_provider
+    global _client, _active_provider, _active_key
     key, resolved_provider, base_url = get_api_key_and_provider(provider, api_key)
 
     if not key:
@@ -72,12 +74,13 @@ def get_client(
         )
 
     # reuse existing client if same provider and no explicit override
-    if _client is not None and api_key is None and _active_provider == resolved_provider:
+    if _client is not None and _active_key == key and _active_provider == resolved_provider:
         return _client
 
     timeout = float(CONFIG.get("request_timeout_seconds", 90.0))
-    _client = OpenAI(base_url=base_url, api_key=key, timeout=timeout)
+    _client = OpenAI(base_url=base_url, api_key=key, timeout=timeout, max_retries=0)
     _active_provider = resolved_provider
+    _active_key = key
     return _client
 
 
@@ -89,7 +92,8 @@ def _retry_after(exc: Exception) -> Optional[float]:
         return None
     raw = headers.get("retry-after") or headers.get("Retry-After")
     try:
-        return float(raw) if raw is not None else None
+        delay = float(raw) if raw is not None else None
+        return delay if delay is not None and math.isfinite(delay) and delay >= 0 else None
     except (ValueError, TypeError):
         return None
 
@@ -164,7 +168,7 @@ def call_llm_with_usage(
 
             # if content is empty and we have retries left, wait and retry
             if not content_text and attempt < max_retries:
-                time.sleep(base_backoff * (2 ** attempt))
+                time.sleep(min(max_backoff, base_backoff * (2 ** attempt)))
                 continue
 
             # extract token usage if available (some providers omit it)
@@ -185,9 +189,7 @@ def call_llm_with_usage(
 
             wait = _retry_after(exc)
             if wait is None:
-                wait = min(max_backoff, base_backoff * (2 ** attempt))
-                # add small jitter to avoid thundering herd
-                wait += random.uniform(0.0, 1.0)
+                wait = min(max_backoff, base_backoff * (2 ** attempt) + random.uniform(0.0, 1.0))
             print(f"  retrying in {wait:.1f}s after error: {type(exc).__name__}")
             time.sleep(wait)
 
