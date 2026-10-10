@@ -15,17 +15,13 @@ CONDITIONS = ["low", "medium", "high"]
 # user conviction grid in log-odds scale
 DEFAULT_P_USER_GRID = [-2.0, -1.0, 0.0, 1.0, 2.0]
 
-# runtime defaults dictionary
+# runtime defaults dictionary for API client
 CONFIG: Dict[str, Any] = {
     "provider": "groq",
-    "assistant_model": DEFAULT_GROQ_MODEL,
-    "evaluator_model": DEFAULT_GROQ_MODEL,
     "max_retries": 4,
     "base_backoff_seconds": 3.0,
     "max_backoff_seconds": 60.0,
     "request_timeout_seconds": 90.0,
-    "max_workers": 2,
-    "output_dir": "results",
 }
 
 

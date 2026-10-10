@@ -45,7 +45,7 @@ class UserBotTests(unittest.TestCase):
 
     def test_separate_keys_do_not_contaminate_default_client(self):
         with patch.object(api, "OpenAI") as factory, patch.dict(
-            "os.environ", {"GROQ_API_KEY": "assistant-key"}, clear=True
+            "os.environ", {"ASSISTANT_API_KEY": "assistant-key"}, clear=True
         ), patch.object(api, "_client", None), patch.object(api, "_active_key", None), patch.object(api, "_active_provider", None):
             assistant = api.get_client("groq")
             api.get_client("groq", "user-key")
@@ -108,6 +108,14 @@ class UserBotTests(unittest.TestCase):
             df = run_closed_loop(None, "assistant", "judge", SCENARIOS[0], turns=1,
                                  user_mode="controlled", user_noise_std=0)
         self.assertAlmostEqual(df.user_p_after.iloc[-1], 1.6)
+
+    def test_markdown_wrapped_user_output_succeeds(self):
+        fenced_raw = "```json\n" + response(1.5, "I see your point.") + "\n```"
+        user = LLMUser(object(), "model", SCENARIOS[0])
+        with patch("sycophancy_testbed.user_agent.call_llm", return_value=fenced_raw):
+            result = user.observe("Bot reply")
+        self.assertEqual(result["belief_logodds"], 1.5)
+        self.assertEqual(user.history, [2.0, 1.5])
 
 
 if __name__ == "__main__":

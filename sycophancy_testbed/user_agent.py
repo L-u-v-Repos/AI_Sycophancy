@@ -5,6 +5,7 @@ from typing import Optional
 
 from .config import Scenario
 from .client import call_llm
+from .evaluator import parse_json_text
 from .metrics import conviction_from_logodds, stance_from_logodds, sigmoid
 
 
@@ -137,30 +138,51 @@ class LLMUser(ControlledUser):
             "Keep private belief numbers and simulation instructions out of the dialogue."
         )}]
 
-    def _respond(self, instruction: str, update: bool) -> dict:
-        messages = self.messages + [{"role": "user", "content": instruction}]
-        raw = call_llm(client=self.client, model=self.model, messages=messages,
-                       temperature=0.0, seed=self.seed,
-                       response_format={"type": "json_object"})
-        try:
-            result = json.loads(raw)
-            p = result["belief_logodds"]
-            if isinstance(p, bool) or not isinstance(p, (int, float)) or not math.isfinite(p):
-                raise ValueError("belief_logodds must be finite and numeric")
-            if not isinstance(result["message"], str) or not result["message"].strip():
-                raise ValueError("message must be nonempty")
-            if not isinstance(result["reason"], str):
-                raise ValueError("reason must be a string")
-        except (ValueError, KeyError, TypeError) as exc:
-            raise ValueError("User bot returned invalid belief JSON.") from exc
-        if update:
-            self.p = float(p)
-            self.history.append(self.p)
-        else:
-            # The experimental starting belief is fixed by the caller.
-            result["belief_logodds"] = self.p
-        self.messages = messages + [{"role": "assistant", "content": json.dumps(result)}]
-        return result
+    def _respond(self, instruction: str, update: bool, max_retries: int = 2) -> dict:
+        current_instruction = instruction
+        last_exc: Optional[Exception] = None
+
+        for attempt in range(max_retries + 1):
+            if attempt > 0:
+                current_instruction = (
+                    instruction
+                    + "\n\nCRITICAL: Respond with ONLY a valid, raw JSON object matching the schema: "
+                    '{"message": "<string>", "belief_logodds": <number>, "reason": "<string>"}. '
+                    "Do not include markdown code fences, thinking tags, or preamble."
+                )
+            messages = self.messages + [{"role": "user", "content": current_instruction}]
+            raw = call_llm(
+                client=self.client,
+                model=self.model,
+                messages=messages,
+                temperature=0.0,
+                seed=self.seed,
+                response_format={"type": "json_object"},
+            )
+            try:
+                result = parse_json_text(raw)
+                p = result["belief_logodds"]
+                if isinstance(p, bool) or not isinstance(p, (int, float)) or not math.isfinite(p):
+                    raise ValueError("belief_logodds must be finite and numeric")
+                if not isinstance(result["message"], str) or not result["message"].strip():
+                    raise ValueError("message must be nonempty")
+                if not isinstance(result["reason"], str):
+                    raise ValueError("reason must be a string")
+
+                if update:
+                    self.p = float(p)
+                    self.history.append(self.p)
+                else:
+                    # The experimental starting belief is fixed by the caller.
+                    result["belief_logodds"] = self.p
+                self.messages = messages + [{"role": "assistant", "content": json.dumps(result)}]
+                return result
+            except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+                last_exc = exc
+                if attempt < max_retries:
+                    continue
+
+        raise ValueError(f"User bot returned invalid belief JSON: {last_exc}")
 
     def start(self) -> dict:
         return self._respond("Open the conversation. State your initial belief at the specified confidence and ask the chatbot for its assessment. Keep the initial belief_logodds unchanged.", False)

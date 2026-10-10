@@ -31,30 +31,15 @@ def get_api_key_and_provider(
 ) -> tuple[str, str, str]:
     # resolve provider and base url
     chosen_provider = (provider or CONFIG.get("provider", "groq")).lower()
+    base_url = GROQ_BASE_URL if chosen_provider == "groq" else OPENROUTER_BASE_URL
 
     # if api key is provided directly
     if api_key:
-        if chosen_provider == "groq":
-            return api_key, "groq", GROQ_BASE_URL
-        return api_key, "openrouter", OPENROUTER_BASE_URL
+        return api_key, chosen_provider, base_url
 
-    # check environment variables
-    groq_key = os.environ.get("GROQ_API_KEY", "")
-    openrouter_key = os.environ.get("OPENROUTER_API_KEY", "")
-
-    if chosen_provider == "groq" and groq_key:
-        return groq_key, "groq", GROQ_BASE_URL
-    if chosen_provider == "openrouter" and openrouter_key:
-        return openrouter_key, "openrouter", OPENROUTER_BASE_URL
-
-    # fallback to whichever key is present
-    if groq_key:
-        return groq_key, "groq", GROQ_BASE_URL
-    if openrouter_key:
-        return openrouter_key, "openrouter", OPENROUTER_BASE_URL
-
-    # nothing found — return empty key, caller will raise
-    return "", chosen_provider, GROQ_BASE_URL
+    # strictly use ASSISTANT_API_KEY as the default role key when no explicit key is provided
+    key = os.environ.get("ASSISTANT_API_KEY", "")
+    return key, chosen_provider, base_url
 
 
 def get_client(
@@ -66,11 +51,9 @@ def get_client(
     key, resolved_provider, base_url = get_api_key_and_provider(provider, api_key)
 
     if not key:
-        env_var = "GROQ_API_KEY" if resolved_provider == "groq" else "OPENROUTER_API_KEY"
         raise RuntimeError(
             f"API key missing for provider '{resolved_provider}'.\n"
-            f"Please set {env_var} in your .env file.\n"
-            f"Get a free Groq key at: https://console.groq.com/keys"
+            "Please provide an explicit api_key or set ASSISTANT_API_KEY in your .env file."
         )
 
     # reuse existing client if same provider and no explicit override
