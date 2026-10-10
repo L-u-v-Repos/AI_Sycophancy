@@ -253,6 +253,41 @@
       font-weight: 700;
     }
 
+    /* Provider Toggle Pills */
+    .provider-toggle-group {
+      display: inline-flex;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      background: var(--bg-canvas);
+      padding: 2px;
+      gap: 2px;
+    }
+
+    .provider-pill {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 0.35rem 0.75rem;
+      font-size: 0.72rem;
+      font-weight: 600;
+      cursor: pointer;
+      border-radius: 3px;
+      text-align: center;
+      transition: all 0.15s ease;
+      font-family: inherit;
+    }
+
+    .provider-pill:hover {
+      color: var(--text-main);
+    }
+
+    .provider-pill.active {
+      background: var(--bg-card);
+      color: var(--brand);
+      font-weight: 700;
+      box-shadow: var(--shadow-sm);
+    }
+
     .btn-run {
       background: var(--brand);
       color: #ffffff;
@@ -553,6 +588,13 @@
     <div class="card">
       <div class="card-header">
         <span class="card-title">Evaluation Setup</span>
+        <div style="display: flex; align-items: center; gap: 0.65rem;">
+          <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.04em;">Provider / Key:</span>
+          <div class="provider-toggle-group">
+            <button type="button" class="provider-pill active" id="pillProviderGroq" onclick="setProvider('groq')">Groq Cloud</button>
+            <button type="button" class="provider-pill" id="pillProviderGemini" onclick="setProvider('gemini')">Google Gemini</button>
+          </div>
+        </div>
       </div>
 
       <!-- Primary Controls Row -->
@@ -706,6 +748,8 @@
   <script>
     let scenarios = [];
     let currentCondition = 'high';
+    let currentProvider = 'groq';
+    let providersData = {};
 
     // Theme Management
     function initTheme() {
@@ -734,6 +778,8 @@
         const res = await fetch('/api/scenarios');
         const data = await res.json();
         scenarios = data.scenarios;
+        providersData = data.providers || {};
+        currentProvider = data.default_provider || 'groq';
 
         const select = document.getElementById('scenarioSelect');
         let options = scenarios.map(s => 
@@ -742,17 +788,30 @@
         options += '<option value="__custom__">+ [Custom] Enter Custom Scenario & Prompt...</option>';
         select.innerHTML = options;
 
-        const modelSel = document.getElementById('modelSelect');
-        const fallbackModels = ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b"];
-        const models = (data.models && data.models.length > 0) ? data.models : fallbackModels;
-        modelSel.innerHTML = models.map(m => 
-          `<option value="${m}" ${m === data.default_model ? 'selected' : ''}>${m}</option>`
-        ).join('');
-
+        setProvider(currentProvider);
         onScenarioChange();
       } catch (err) {
         console.error('Initialization error:', err);
       }
+    }
+
+    function setProvider(prov) {
+      currentProvider = prov;
+      document.querySelectorAll('.provider-pill').forEach(b => b.classList.remove('active'));
+      const activePill = document.getElementById(prov === 'gemini' ? 'pillProviderGemini' : 'pillProviderGroq');
+      if (activePill) activePill.classList.add('active');
+
+      const provInfo = providersData[prov] || {};
+      const fallbackModels = prov === 'gemini'
+        ? ["gemini-3.8-flash", "gemini-flash-latest"]
+        : ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b"];
+      const models = (provInfo.models && provInfo.models.length > 0) ? provInfo.models : fallbackModels;
+      const defaultMod = provInfo.default_model || models[0];
+
+      const modelSel = document.getElementById('modelSelect');
+      modelSel.innerHTML = models.map(m => 
+        `<option value="${m}" ${m === defaultMod ? 'selected' : ''}>${m}</option>`
+      ).join('');
     }
 
     function setCondition(cond) {
@@ -816,6 +875,7 @@
       const customPrompt = isCustom ? document.getElementById('initialUserPrompt').value.trim() : null;
 
       const payload = {
+        provider: currentProvider,
         assistant_model: document.getElementById('modelSelect').value,
         condition: currentCondition,
         mode: document.getElementById('modeSelect').value,
