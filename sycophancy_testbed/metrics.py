@@ -1,7 +1,7 @@
 import math
 import hashlib
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any
 
 
 def utc_now() -> str:

@@ -13,8 +13,6 @@ from openai import (
 
 from .config import (
     CONFIG,
-    DEFAULT_GROQ_MODEL,
-    DEFAULT_OPENROUTER_MODEL,
     GROQ_BASE_URL,
     OPENROUTER_BASE_URL,
 )

@@ -14,7 +14,7 @@ from dotenv import dotenv_values
 
 from sycophancy_testbed.analysis import summarize_trajectory
 from sycophancy_testbed.client import get_client
-from sycophancy_testbed.config import CONDITIONS, DEFAULT_GROQ_MODEL, SCENARIOS
+from sycophancy_testbed.config import CONDITIONS, DEFAULT_GROQ_MODEL, SUPPORTED_GROQ_MODELS, SCENARIOS
 from sycophancy_testbed.experiments import run_closed_loop
 from sycophancy_testbed.plotting import plot_trajectory
 
@@ -22,17 +22,23 @@ from sycophancy_testbed.plotting import plot_trajectory
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", required=True)
+    parser.add_argument(
+        "--model",
+        default=DEFAULT_GROQ_MODEL,
+        choices=SUPPORTED_GROQ_MODELS,
+        help=f"Model to evaluate across the benchmark (choices: {', '.join(SUPPORTED_GROQ_MODELS)}, default: {DEFAULT_GROQ_MODEL})",
+    )
     args = parser.parse_args()
     output = Path(args.output_dir)
     output.mkdir(parents=True, exist_ok=True)
     values = dotenv_values(Path(__file__).resolve().parents[1] / ".env")
     clients = {}
     for role in ("ASSISTANT", "USER", "EVALUATOR"):
-        key = values.get(role + "_API_KEY")
+        key = os.environ.get(role + "_API_KEY") or values.get(role + "_API_KEY")
         if not key:
             raise ValueError(f"Missing {role}_API_KEY")
         clients[role] = get_client("groq", key)
-    config = {"provider": "groq", "model": DEFAULT_GROQ_MODEL,
+    config = {"provider": "groq", "model": args.model,
               "turns": 6, "initial_p": 2.0, "evidence": "none", "seed": 42,
               "scenarios": [s.id for s in SCENARIOS], "conditions": CONDITIONS,
               "trust_levels": CONDITIONS, "repetitions": 1}
@@ -55,18 +61,20 @@ def main():
                     started = time.monotonic()
                     try:
                         df = run_closed_loop(
-                            client=clients["ASSISTANT"], assistant_model=DEFAULT_GROQ_MODEL,
-                            evaluator_model=DEFAULT_GROQ_MODEL,
+                            client=clients["ASSISTANT"], assistant_model=args.model,
+                            evaluator_model=args.model,
                             evaluator_client=clients["EVALUATOR"],
-                            user_client=clients["USER"], user_model=DEFAULT_GROQ_MODEL,
+                            user_client=clients["USER"], user_model=args.model,
                             scenario=scenario, condition=condition, user_trust=trust,
                             turns=6, initial_p=2.0, seed=42,
                         )
                     except Exception as exc:
                         # Never include credentials in a persisted error.
                         message = str(exc)
-                        for role in clients:
-                            message = message.replace(values[role + "_API_KEY"], "[REDACTED]")
+                        for role in ("ASSISTANT", "USER", "EVALUATOR"):
+                            k = os.environ.get(role + "_API_KEY") or values.get(role + "_API_KEY")
+                            if k:
+                                message = message.replace(k, "[REDACTED]")
                         (output / "error.json").write_text(json.dumps({
                             "conversation": name, "error_type": type(exc).__name__,
                             "message": message,

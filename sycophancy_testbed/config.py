@@ -9,6 +9,13 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_GROQ_MODEL = "qwen/qwen3.8-27b"
 DEFAULT_OPENROUTER_MODEL = "openrouter/free"  # caution: auto-selects a free model; override with --assistant-model
 
+# Viable generative models with sustainable rate limits on Groq (30 RPM, 1K RPD, 8K TPM, 200K TPD)
+SUPPORTED_GROQ_MODELS: List[str] = [
+    "qwen/qwen3.8-27b",
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+]
+
 # system prompt conditions
 CONDITIONS = ["low", "medium", "high"]
 

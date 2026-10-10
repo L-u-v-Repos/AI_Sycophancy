@@ -11,6 +11,7 @@ from .client import call_llm, call_llm_with_usage, get_client
 from .config import (
     DEFAULT_GROQ_MODEL,
     DEFAULT_OPENROUTER_MODEL,
+    SUPPORTED_GROQ_MODELS,
     GROQ_BASE_URL,
     OPENROUTER_BASE_URL,
     PILOT_SCENARIOS,
@@ -39,7 +40,7 @@ from .plotting import (
     plot_sycophancy_bars,
     plot_trajectory,
 )
-from .user_agent import ControlledUser, generate_user_message
+from .user_agent import ControlledUser, LLMUser, generate_user_message
 
 __all__ = [
     "Scenario",
@@ -48,6 +49,7 @@ __all__ = [
     "SYSTEM_PROMPTS",
     "DEFAULT_GROQ_MODEL",
     "DEFAULT_OPENROUTER_MODEL",
+    "SUPPORTED_GROQ_MODELS",
     "GROQ_BASE_URL",
     "OPENROUTER_BASE_URL",
     "sigmoid",
@@ -62,6 +64,7 @@ __all__ = [
     "call_llm_with_usage",
     "generate_user_message",
     "ControlledUser",
+    "LLMUser",
     "evaluate_response",
     "parse_json_text",
     "validate_evaluation",

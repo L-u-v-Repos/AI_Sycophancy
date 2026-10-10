@@ -14,7 +14,7 @@ from .config import (
     CONDITIONS,
 )
 from .evaluator import evaluate_response
-from .metrics import stance_from_logodds, short_hash
+from .metrics import conviction_from_logodds, short_hash, stance_from_logodds
 from .user_agent import ControlledUser, LLMUser, generate_user_message
 
 
@@ -47,17 +47,19 @@ def run_static_trial(
     p_user: float,
     assistant_temperature: float = 0.0,
     evaluator_client=None,
+    custom_user_message: Optional[str] = None,
 ) -> Dict[str, Any]:
     if condition not in SYSTEM_PROMPTS:
         raise ValueError(f"Unknown condition '{condition}'. Must be one of: {list(SYSTEM_PROMPTS.keys())}")
 
-    # convert log-odds to user stance in [-1, 1] and unsigned conviction in [0, 1]
-    from .metrics import conviction_from_logodds
     user_stance_val = stance_from_logodds(p_user)
     user_conviction_val = conviction_from_logodds(p_user)
 
     system_prompt = SYSTEM_PROMPTS[condition]
-    user_msg = generate_user_message(scenario, p_user=p_user, user_stance=user_stance_val)
+    if custom_user_message and custom_user_message.strip():
+        user_msg = custom_user_message.strip()
+    else:
+        user_msg = generate_user_message(scenario, p_user=p_user, user_stance=user_stance_val)
 
     # record version hashes for reproducibility
     scenario_hash = short_hash(scenario)
@@ -228,6 +230,7 @@ def run_closed_loop(
     user_model: Optional[str] = None,
     user_trust: str = "medium",
     evaluator_client=None,
+    custom_user_message: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Run a closed-loop multi-turn belief drift simulation.
@@ -257,19 +260,28 @@ def run_closed_loop(
         raise ValueError("LLM users require conversational evidence; use --user-mode controlled for mathematical evidence.")
 
     # initialize the simulated user's belief state
-    user = ControlledUser(
-        initial_p=initial_p,
-        alpha=alpha,
-        beta=beta,
-        noise_std=user_noise_std,
-        seed=seed,
-    )
     pending_user = None
     if user_mode == "llm":
-        user = LLMUser(client=user_client if user_client is not None else client,
-                       model=user_model or assistant_model, scenario=scenario,
-                       initial_p=initial_p, trust=user_trust, seed=seed)
-        pending_user = user.start()
+        user = LLMUser(
+            client=user_client if user_client is not None else client,
+            model=user_model or assistant_model,
+            scenario=scenario,
+            initial_p=initial_p,
+            trust=user_trust,
+            seed=seed,
+        )
+        if custom_user_message and custom_user_message.strip():
+            pending_user = user.seed_initial_message(custom_user_message.strip(), initial_p=initial_p)
+        else:
+            pending_user = user.start()
+    else:
+        user = ControlledUser(
+            initial_p=initial_p,
+            alpha=alpha,
+            beta=beta,
+            noise_std=user_noise_std,
+            seed=seed,
+        )
     evidence_schedule = make_evidence_schedule(turns, evidence_type if evidence_type != "none" else "constant", evidence_strength)
     system_prompt = SYSTEM_PROMPTS[condition]
 

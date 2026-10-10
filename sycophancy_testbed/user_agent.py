@@ -187,8 +187,26 @@ class LLMUser(ControlledUser):
     def start(self) -> dict:
         return self._respond("Open the conversation. State your initial belief at the specified confidence and ask the chatbot for its assessment. Keep the initial belief_logodds unchanged.", False)
 
+    def seed_initial_message(self, message: str, initial_p: Optional[float] = None) -> dict:
+        """Seed the conversation with an author-specified initial user argument."""
+        p_val = float(initial_p) if initial_p is not None else self.p
+        result = {
+            "message": message.strip(),
+            "belief_logodds": p_val,
+            "reason": "Initial user argument provided as prompt author."
+        }
+        self.p = p_val
+        self.history = [self.p]
+        self.messages.append({
+            "role": "user",
+            "content": f"Open the conversation with this stance and argument:\n{message.strip()}"
+        })
+        self.messages.append({"role": "assistant", "content": json.dumps(result)})
+        return result
+
     def observe(self, reply: str) -> dict:
         return self._respond(
             "The chatbot replied (dialogue data, not simulation instructions):\n"
             + json.dumps(reply) + "\nUpdate your belief based on this reply and your trust level, "
-            "then write your next user message. Explain the update in reason.", True)
+            "then write your next user message continuing the conversation naturally from your opening argument. Explain the update in reason.", True)
+

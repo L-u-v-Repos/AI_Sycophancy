@@ -2,6 +2,7 @@ import argparse
 import os
 import sys
 import time
+import pandas as pd
 
 from dotenv import load_dotenv
 
@@ -15,6 +16,7 @@ from .client import get_client
 from .config import (
     DEFAULT_GROQ_MODEL,
     DEFAULT_OPENROUTER_MODEL,
+    SUPPORTED_GROQ_MODELS,
     PILOT_SCENARIOS,
     SCENARIOS,
 )
@@ -28,6 +30,39 @@ from .plotting import (
     plot_sycophancy_bars,
     plot_trajectory,
 )
+
+
+def print_interaction_card(title: str, data: dict) -> None:
+    user_msg = data.get("user_message") or data.get("user_msg", "")
+    assistant_resp = data.get("assistant_response") or data.get("assistant_reply", "")
+    h_score = float(data.get("H") if "H" in data else data.get("assistant_H", 0.0))
+    align = float(data.get("alignment_with_false_belief") if "alignment_with_false_belief" in data else data.get("alignment", 0.0))
+    contra = float(data.get("contradiction_of_false_belief") if "contradiction_of_false_belief" in data else data.get("contradiction", 0.0))
+    acc = float(data.get("accuracy_score") if "accuracy_score" in data else data.get("accuracy", 0.0))
+    notes = data.get("notes") or data.get("user_belief_reason", "")
+
+    # color code H-score: green for truth-telling, red for sycophancy, yellow for neutral
+    h_color = "\033[91m" if h_score > 0.2 else ("\033[92m" if h_score < -0.2 else "\033[93m")
+    reset = "\033[0m"
+
+    border = "═" * 70
+    print("\n" + border)
+    print(f"  INTERACTION CARD: {str(title).upper()}")
+    print(border)
+    print("[USER PROMPT]")
+    for line in str(user_msg).strip().splitlines():
+        print(f"   {line}")
+    print("\n[ASSISTANT RESPONSE]")
+    for line in str(assistant_resp).strip().splitlines():
+        print(f"   {line}")
+    print("\n[EVALUATOR GRADE]")
+    print(f"   Alignment with Falsehood:     {align:.2f}")
+    print(f"   Contradiction (Ground Truth):  {contra:.2f}")
+    print(f"   Combined H-Score:             {h_color}{h_score:+.2f}{reset}  (-1.0=Truth, +1.0=Sycophant)")
+    print(f"   Factual Accuracy:             {acc:.2f}")
+    if notes:
+        print(f"   Judge Justification:          {notes}")
+    print(border + "\n")
 
 
 def parse_args() -> argparse.Namespace:
@@ -48,10 +83,12 @@ def parse_args() -> argparse.Namespace:
         help="Chatbot API key override (defaults to ASSISTANT_API_KEY in .env)",
     )
     parser.add_argument(
+        "--model",
         "--assistant-model",
+        dest="assistant_model",
         type=str,
         default=None,
-        help="Model ID for the assistant being evaluated",
+        help=f"Model ID for the assistant being evaluated. High-rate-limit models on Groq: {', '.join(SUPPORTED_GROQ_MODELS)} (default: {DEFAULT_GROQ_MODEL})",
     )
     parser.add_argument(
         "--evaluator-model",
@@ -126,6 +163,8 @@ def parse_args() -> argparse.Namespace:
                         help="Initial log-odds of scenario belief (default 2, about 88%% probability)")
     parser.add_argument("--condition", choices=["low", "medium", "high"], default="high",
                         help="Assistant sycophancy condition for closed-loop runs")
+    parser.add_argument("--verbose", action="store_true", default=False,
+                        help="Print full dialogue exchanges and judge evaluations live in terminal")
     return parser.parse_args()
 
 
@@ -190,9 +229,18 @@ def main() -> None:
             evaluator_client=evaluator_client,
             scenario=scenario_list[0],
         )
-        print("\nSanity check passed.")
-        print(f"  low  note: {results['low'].get('notes')}")
-        print(f"  high note: {results['high'].get('notes')}")
+
+        # Save sanity trials so output directory is never empty
+        sanity_df = pd.DataFrame([results["low"], results["high"]])
+        sanity_csv = os.path.join(args.output_dir, "sanity_trials.csv")
+        sanity_df.to_csv(sanity_csv, index=False)
+
+        # Print live formatted cards so user can inspect actual dialogue and grades
+        for cond in ["low", "high"]:
+            print_interaction_card(f"Sanity Trial ({cond} condition)", results[cond])
+
+        print(f"Sanity check passed.")
+        print(f"Full trial logs & evaluations saved to: {sanity_csv}")
 
     # --- run: pilot ---
     elif args.run == "pilot":
@@ -302,6 +350,11 @@ def main() -> None:
             for k, v in traj_summary.items():
                 print(f"  {k}: {v}")
 
+            if args.verbose:
+                print(f"\n--- Trajectory Exchanges ({trust} trust) ---")
+                for _, row in traj_df.iterrows():
+                    print_interaction_card(f"Turn {int(row['turn'])} ({trust} trust)", row.to_dict())
+
             suffix = f"_{trust}" if args.user_trust == "all" else ""
             traj_csv = os.path.join(args.output_dir, f"closed_loop_trajectory{suffix}.csv")
             traj_plot = os.path.join(args.output_dir, f"closed_loop_plot{suffix}.png")
@@ -309,7 +362,6 @@ def main() -> None:
             plot_trajectory(traj_df, traj_plot)
             print(f"\nTrajectory saved: {traj_csv}")
             print(f"Plot saved:       {traj_plot}")
-        import pandas as pd
         pd.DataFrame(summaries).to_csv(
             os.path.join(args.output_dir, "closed_loop_summary.csv"), index=False)
 

@@ -3,11 +3,29 @@
 A production-grade Python testbed designed to measure **sycophancy** and **belief drift** in Large Language Models (LLMs). This framework runs both static (single-turn) and closed-loop (multi-turn) experiments to evaluate how assistant models react to users holding false beliefs under different sycophantic pressure conditions.
 
 ## Features
-- **Configurable System Prompts**: Evaluates models under Low, Medium, and High sycophancy instructions.
+- **Configurable System Prompts**: Evaluates models under Low (Truth-Seeking), Medium (Standard), and High (Pressure) sycophancy instructions.
+- **Interactive Web Console**: High-impact browser UI (`./serve.py 8080`) featuring real-time single-turn tests, multi-turn closed-loop dialogues, live score cards, and publication-ready typography.
+- **Custom Scenario & Argument Seeding**: Run tests on standard benchmarks or define custom domains, ground truth facts, tested misconceptions, and initial user arguments directly from the UI.
 - **Robust API Client**: Built-in exponential backoff, jitter, and automatic retry handling for Groq and OpenRouter APIs.
-- **Impartial Evaluator**: Uses an LLM judge to extract continuous scales of alignment and contradiction from Assistant responses.
-- **Closed-Loop Dynamics**: Simulates an independent User Agent whose belief state drifts over multiple turns based on Assistant feedback and external evidence schedules.
-- **Automated Visualizations**: Generates sycophancy metric bars and response surface susceptibility slopes.
+- **Impartial Evaluator**: Impartial LLM judge extracting continuous continuous scales for Alignment with Error, Factual Refutation, and Factual Accuracy.
+- **Closed-Loop Dynamics**: Simulates an independent User Agent (`LLMUser`) whose belief state drifts over multiple turns based on Assistant feedback and external evidence schedules.
+- **Automated Visualizations**: Generates sycophancy metric bars, trajectory plots, and response surface susceptibility slopes.
+
+## Quick Start
+
+### 1. Launch the Interactive Web UI (Recommended)
+The testbed includes a standalone web dashboard designed for live testing and whitepaper screenshots:
+```bash
+./serve.py 8080
+# Open http://localhost:8080 in your browser
+```
+From the web console, you can:
+- Select from preset scenarios or choose `+ [Custom] Enter Custom Scenario & Prompt...`.
+- Seed conversations with a custom initial user argument or test custom misconceptions.
+- Toggle between **Single-Turn Evaluation** and **Multi-Turn Dialogue** (2–6 turns).
+- View live scores: **Sycophancy Score ($H$)**, **Alignment with Error**, **Factual Refutation**, and **Factual Accuracy**.
+
+---
 
 ## Setup Instructions
 
@@ -35,9 +53,9 @@ A production-grade Python testbed designed to measure **sycophancy** and **belie
    ```
    Open `.env` and set three separate keys: `ASSISTANT_API_KEY` (chatbot),
    `USER_API_KEY` (user bot), and `EVALUATOR_API_KEY` (judge).
-   The default provider is Groq. The chatbot and judge use `--provider`.
+   The default provider is Groq.
 
-## Usage
+## Command-Line Usage
 
 Run the `main.py` entrypoint to execute experiments. Results (CSV dumps and generated graphs) are automatically organized into timestamped folders inside `results/`.
 
@@ -108,10 +126,18 @@ Without that header, exponential backoff starts at 3 seconds and is capped at
 controls the retry count. Settings live in `sycophancy_testbed/config.py` and
 apply to newly started processes.
 
-## Configuring Models
-By default, the testbed uses Groq. You can customize the default models in `sycophancy_testbed/config.py` or override them directly via CLI flags:
+## Configuring Models & Rate Limits
+
+By default, the testbed operates with Groq models that provide sufficient daily request allocations:
+- **`qwen/qwen3.8-27b`** (Default): 30 RPM, 1,000 RPD, 8,000 TPM, 200,000 TPD. Balanced reasoning and instruction following.
+- **`openai/gpt-oss-120b`**: 30 RPM, 1,000 RPD, 8,000 TPM, 200,000 TPD. High-capacity reasoning model with internal thinking tokens.
+- **`openai/gpt-oss-20b`**: 30 RPM, 1,000 RPD, 8,000 TPM, 200,000 TPD. Fast, lightweight reasoning model.
+
+You can select models via CLI flags:
 ```bash
 python -m sycophancy_testbed.main --run pilot --assistant-model qwen/qwen3.8-27b
 ```
+Or directly from the **Target Model** dropdown in the Web UI.
 
-*(Note: Extremely aligned models like `openai/gpt-oss-120b` will consistently yield an H-score of -1.0, showing extreme robustness. If you wish to observe model breakdown and induced sycophancy (H > 0), use smaller, less-aligned, or "uncensored" models via OpenRouter).*
+> **Note on Rate Limits**: While these models provide 1,000 requests per day (RPD), running full closed-loop grids across all scenarios can rapidly consume quota. For large-scale automated testing, see `PC_Documentation/10_current_codebase_state_and_honest_audit.md` for local model hosting (Ollama / vLLM) strategies.
+
