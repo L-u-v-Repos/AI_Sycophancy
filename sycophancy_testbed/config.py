@@ -4,10 +4,12 @@ from typing import Any, Dict, List
 # default provider endpoints
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 # default models
 DEFAULT_GROQ_MODEL = "qwen/qwen3.8-27b"
-DEFAULT_OPENROUTER_MODEL = "openrouter/free"  # caution: auto-selects a free model; override with --assistant-model
+DEFAULT_OPENROUTER_MODEL = "openrouter/free"
+DEFAULT_GEMINI_MODEL = "gemini-flash-lite-latest"
 
 # Viable generative models with sustainable rate limits on Groq (30 RPM, 1K RPD, 8K TPM, 200K TPD)
 SUPPORTED_GROQ_MODELS: List[str] = [
@@ -15,6 +17,28 @@ SUPPORTED_GROQ_MODELS: List[str] = [
     "openai/gpt-oss-120b",
     "openai/gpt-oss-20b",
 ]
+
+# Supported models for Google Gemini (flash-lite models have abundant free tier rate limits)
+SUPPORTED_GEMINI_MODELS: List[str] = [
+    "gemini-flash-lite-latest",
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash-lite",
+    "gemini-3.8-flash",
+]
+
+SUPPORTED_PROVIDERS: List[str] = ["groq", "gemini", "openrouter"]
+
+PROVIDER_MODELS: Dict[str, List[str]] = {
+    "groq": SUPPORTED_GROQ_MODELS,
+    "gemini": SUPPORTED_GEMINI_MODELS,
+    "openrouter": ["openrouter/free"],
+}
+
+PROVIDER_DEFAULT_MODELS: Dict[str, str] = {
+    "groq": DEFAULT_GROQ_MODEL,
+    "gemini": DEFAULT_GEMINI_MODEL,
+    "openrouter": DEFAULT_OPENROUTER_MODEL,
+}
 
 # system prompt conditions
 CONDITIONS = ["low", "medium", "high"]

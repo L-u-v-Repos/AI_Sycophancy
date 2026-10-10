@@ -15,6 +15,7 @@ from .config import (
     CONFIG,
     GROQ_BASE_URL,
     OPENROUTER_BASE_URL,
+    GEMINI_BASE_URL,
 )
 
 # cached singleton client instance
@@ -29,14 +30,25 @@ def get_api_key_and_provider(
 ) -> tuple[str, str, str]:
     # resolve provider and base url
     chosen_provider = (provider or CONFIG.get("provider", "groq")).lower()
-    base_url = GROQ_BASE_URL if chosen_provider == "groq" else OPENROUTER_BASE_URL
+    if chosen_provider == "gemini":
+        base_url = GEMINI_BASE_URL
+    elif chosen_provider == "groq":
+        base_url = GROQ_BASE_URL
+    else:
+        base_url = OPENROUTER_BASE_URL
 
     # if api key is provided directly
     if api_key:
         return api_key, chosen_provider, base_url
 
-    # strictly use ASSISTANT_API_KEY as the default role key when no explicit key is provided
-    key = os.environ.get("ASSISTANT_API_KEY", "")
+    # resolve key from environment based on provider
+    if chosen_provider == "gemini":
+        key = os.environ.get("GEMINI_API_KEY") or os.environ.get("ASSISTANT_API_KEY", "")
+    elif chosen_provider == "groq":
+        key = os.environ.get("ASSISTANT_API_KEY") or os.environ.get("GROQ_API_KEY", "")
+    else:
+        key = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("ASSISTANT_API_KEY", "")
+
     return key, chosen_provider, base_url
 
 
@@ -49,9 +61,10 @@ def get_client(
     key, resolved_provider, base_url = get_api_key_and_provider(provider, api_key)
 
     if not key:
+        env_hint = "GEMINI_API_KEY" if resolved_provider == "gemini" else ("ASSISTANT_API_KEY" if resolved_provider == "groq" else "OPENROUTER_API_KEY")
         raise RuntimeError(
             f"API key missing for provider '{resolved_provider}'.\n"
-            "Please provide an explicit api_key or set ASSISTANT_API_KEY in your .env file."
+            f"Please provide an explicit api_key or set {env_hint} in your .env file."
         )
 
     # reuse existing client if same provider and no explicit override
@@ -59,10 +72,11 @@ def get_client(
         return _client
 
     timeout = float(CONFIG.get("request_timeout_seconds", 90.0))
-    _client = OpenAI(base_url=base_url, api_key=key, timeout=timeout, max_retries=0)
+    client_instance = OpenAI(base_url=base_url, api_key=key, timeout=timeout, max_retries=0)
+    _client = client_instance
     _active_provider = resolved_provider
     _active_key = key
-    return _client
+    return client_instance
 
 
 def _retry_after(exc: Exception) -> Optional[float]:

@@ -14,7 +14,14 @@ from dotenv import dotenv_values
 
 from sycophancy_testbed.analysis import summarize_trajectory
 from sycophancy_testbed.client import get_client
-from sycophancy_testbed.config import CONDITIONS, DEFAULT_GROQ_MODEL, SUPPORTED_GROQ_MODELS, SCENARIOS
+from sycophancy_testbed.config import (
+    CONDITIONS,
+    DEFAULT_GROQ_MODEL,
+    DEFAULT_GEMINI_MODEL,
+    SUPPORTED_GROQ_MODELS,
+    SUPPORTED_GEMINI_MODELS,
+    SCENARIOS,
+)
 from sycophancy_testbed.experiments import run_closed_loop
 from sycophancy_testbed.plotting import plot_trajectory
 
@@ -23,22 +30,37 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument(
+        "--provider",
+        choices=["groq", "gemini"],
+        default="groq",
+        help="LLM provider: groq or gemini (default: groq)",
+    )
+    parser.add_argument(
         "--model",
-        default=DEFAULT_GROQ_MODEL,
-        choices=SUPPORTED_GROQ_MODELS,
-        help=f"Model to evaluate across the benchmark (choices: {', '.join(SUPPORTED_GROQ_MODELS)}, default: {DEFAULT_GROQ_MODEL})",
+        default=None,
+        help="Model to evaluate across the benchmark (default: provider default model)",
     )
     args = parser.parse_args()
+    if args.model is None:
+        args.model = DEFAULT_GEMINI_MODEL if args.provider == "gemini" else DEFAULT_GROQ_MODEL
+
     output = Path(args.output_dir)
     output.mkdir(parents=True, exist_ok=True)
     values = dotenv_values(Path(__file__).resolve().parents[1] / ".env")
     clients = {}
-    for role in ("ASSISTANT", "USER", "EVALUATOR"):
-        key = os.environ.get(role + "_API_KEY") or values.get(role + "_API_KEY")
-        if not key:
-            raise ValueError(f"Missing {role}_API_KEY")
-        clients[role] = get_client("groq", key)
-    config = {"provider": "groq", "model": args.model,
+    if args.provider == "gemini":
+        gemini_key = os.environ.get("GEMINI_API_KEY") or values.get("GEMINI_API_KEY")
+        if not gemini_key:
+            raise ValueError("Missing GEMINI_API_KEY in environment or .env")
+        for role in ("ASSISTANT", "USER", "EVALUATOR"):
+            clients[role] = get_client("gemini", gemini_key)
+    else:
+        for role in ("ASSISTANT", "USER", "EVALUATOR"):
+            key = os.environ.get(role + "_API_KEY") or values.get(role + "_API_KEY")
+            if not key:
+                raise ValueError(f"Missing {role}_API_KEY")
+            clients[role] = get_client("groq", key)
+    config = {"provider": args.provider, "model": args.model,
               "turns": 6, "initial_p": 2.0, "evidence": "none", "seed": 42,
               "scenarios": [s.id for s in SCENARIOS], "conditions": CONDITIONS,
               "trust_levels": CONDITIONS, "repetitions": 1}
@@ -75,13 +97,16 @@ def main():
                             k = os.environ.get(role + "_API_KEY") or values.get(role + "_API_KEY")
                             if k:
                                 message = message.replace(k, "[REDACTED]")
+                        gemini_k = os.environ.get("GEMINI_API_KEY") or values.get("GEMINI_API_KEY")
+                        if gemini_k:
+                            message = message.replace(gemini_k, "[REDACTED]")
                         (output / "error.json").write_text(json.dumps({
                             "conversation": name, "error_type": type(exc).__name__,
                             "message": message,
                         }, indent=2))
                         print(f"Stopped: {type(exc).__name__}: {message}", flush=True)
                         raise SystemExit(1)
-                    df["user_provider"] = "groq"
+                    df["user_provider"] = args.provider
                     temporary = path.with_suffix(".tmp")
                     df.to_csv(temporary, index=False)
                     temporary.replace(path)

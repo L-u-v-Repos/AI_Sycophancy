@@ -4,10 +4,11 @@ A production-grade Python testbed designed to measure **sycophancy** and **belie
 
 ## Features
 - **Configurable System Prompts**: Evaluates models under Low (Truth-Seeking), Medium (Standard), and High (Pressure) sycophancy instructions.
+- **Provider & Key Toggle**: Seamlessly switch between **Groq Cloud** and **Google Gemini** in the Web UI or CLI with dedicated model presets.
 - **Interactive Web Console**: High-impact browser UI (`./serve.py 8080`) featuring real-time single-turn tests, multi-turn closed-loop dialogues, live score cards, and publication-ready typography.
 - **Custom Scenario & Argument Seeding**: Run tests on standard benchmarks or define custom domains, ground truth facts, tested misconceptions, and initial user arguments directly from the UI.
-- **Robust API Client**: Built-in exponential backoff, jitter, and automatic retry handling for Groq and OpenRouter APIs.
-- **Impartial Evaluator**: Impartial LLM judge extracting continuous continuous scales for Alignment with Error, Factual Refutation, and Factual Accuracy.
+- **Robust API Client**: Built-in exponential backoff, jitter, and automatic retry handling for Groq, Google Gemini, and OpenRouter APIs.
+- **Impartial Evaluator**: Impartial LLM judge extracting continuous scales for Alignment with Error, Factual Refutation, and Factual Accuracy.
 - **Closed-Loop Dynamics**: Simulates an independent User Agent (`LLMUser`) whose belief state drifts over multiple turns based on Assistant feedback and external evidence schedules.
 - **Automated Visualizations**: Generates sycophancy metric bars, trajectory plots, and response surface susceptibility slopes.
 
@@ -51,9 +52,16 @@ From the web console, you can:
    ```bash
    cp .env.example .env
    ```
-   Open `.env` and set three separate keys: `ASSISTANT_API_KEY` (chatbot),
-   `USER_API_KEY` (user bot), and `EVALUATOR_API_KEY` (judge).
-   The default provider is Groq.
+   Open `.env` and set your credentials:
+   - **Groq Cloud (Default)**: Set three separate keys to maximize rate limits:
+     `ASSISTANT_API_KEY` (chatbot), `USER_API_KEY` (user bot), and `EVALUATOR_API_KEY` (judge).
+   - **Google Gemini**: Set `GEMINI_API_KEY`. The testbed automatically routes requests to Google Gemini with zero code changes when toggled.
+
+## Provider & Key Toggle
+
+The testbed features a toggle system between **Groq Cloud** and **Google Gemini**:
+- **Interactive Web UI**: Switch between providers anytime using the `Provider / Key: [ Groq Cloud ] [ Google Gemini ]` pill toggle in the **Evaluation Setup** header. Selecting a provider automatically updates the target model dropdown to its supported models (e.g. `gemini-flash-lite-latest`, `gemini-3.1-flash-lite`, `gemini-3.8-flash`).
+- **CLI Workflows**: Pass `--provider gemini` to `main.py` or `scripts/run_all_once.py`. When `--provider gemini` is passed, `GEMINI_API_KEY` is loaded automatically for all roles.
 
 ## Command-Line Usage
 
@@ -62,19 +70,25 @@ Run the `main.py` entrypoint to execute experiments. Results (CSV dumps and gene
 ### Run a Sanity Check
 A quick 2-trial run to ensure the pipeline and APIs are functioning:
 ```bash
+# Using Groq (default)
 python -m sycophancy_testbed.main --run sanity
+
+# Using Google Gemini
+python -m sycophancy_testbed.main --provider gemini --run sanity
 ```
 
 ### Run a Pilot Experiment
 Run a 45-trial experiment over a small subset of scenarios:
 ```bash
 python -m sycophancy_testbed.main --run pilot --provider groq
+# or with Gemini
+python -m sycophancy_testbed.main --run pilot --provider gemini
 ```
 
 ### Run a Full Static Experiment
 Run the full testbed across all scenarios and user conviction grids:
 ```bash
-python -m sycophancy_testbed.main --run full
+python -m sycophancy_testbed.main --run full --provider gemini
 ```
 
 ### Run a Closed-Loop Multi-Turn Simulation
@@ -82,15 +96,11 @@ The user is now an LLM bot by default. It starts with the selected scenario's be
 and generates its own messages and belief updates after each chatbot reply.
 Compare three independent conversations with low, medium, and high trust in the chatbot:
 ```bash
-python -m sycophancy_testbed.main --run closed_loop --turns 6 --user-trust all --initial-p 2 --condition high
+python -m sycophancy_testbed.main --run closed_loop --provider gemini --turns 6 --user-trust all --initial-p 2 --condition high
 ```
 
-Set `ASSISTANT_API_KEY`, `USER_API_KEY`, and `EVALUATOR_API_KEY` in `.env`.
-Each role uses its own credential; missing keys cause an error before API calls.
-Static runs need only the assistant and evaluator keys.
-Use `--user-provider groq` or `--user-provider openrouter` and `--user-model MODEL_ID`
-to select its provider and model. By default, it uses the assistant's provider and
-model. The judge uses the assistant's provider and `--evaluator-model`.
+When using Groq, set `ASSISTANT_API_KEY`, `USER_API_KEY`, and `EVALUATOR_API_KEY` in `.env`.
+When using Gemini, set `GEMINI_API_KEY` in `.env`.
 CLI key overrides are `--api-key`, `--user-api-key`, and `--evaluator-api-key`.
 
 - `--user-trust low`: skeptical; needs convincing reasoning to change its belief.

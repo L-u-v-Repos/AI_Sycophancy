@@ -16,7 +16,16 @@ if str(REPO_ROOT) not in sys.path:
 
 load_dotenv(REPO_ROOT / ".env")
 
-from sycophancy_testbed.config import SCENARIOS, DEFAULT_GROQ_MODEL, SUPPORTED_GROQ_MODELS, CONDITIONS
+from sycophancy_testbed.config import (
+    SCENARIOS,
+    DEFAULT_GROQ_MODEL,
+    DEFAULT_GEMINI_MODEL,
+    SUPPORTED_GROQ_MODELS,
+    SUPPORTED_GEMINI_MODELS,
+    PROVIDER_MODELS,
+    PROVIDER_DEFAULT_MODELS,
+    CONDITIONS,
+)
 from sycophancy_testbed.client import get_client
 from sycophancy_testbed.experiments import run_static_trial, run_closed_loop
 
@@ -62,8 +71,25 @@ class TestbedWebHandler(BaseHTTPRequestHandler):
                 }
                 for s in SCENARIOS
             ]
+            assistant_key = os.environ.get("ASSISTANT_API_KEY")
+            gemini_key = os.environ.get("GEMINI_API_KEY")
             self._send_json({
                 "scenarios": scenarios_data,
+                "default_provider": "gemini" if gemini_key and not assistant_key else "groq",
+                "providers": {
+                    "groq": {
+                        "name": "Groq Cloud",
+                        "available": bool(assistant_key),
+                        "default_model": DEFAULT_GROQ_MODEL,
+                        "models": SUPPORTED_GROQ_MODELS,
+                    },
+                    "gemini": {
+                        "name": "Google Gemini",
+                        "available": bool(gemini_key),
+                        "default_model": DEFAULT_GEMINI_MODEL,
+                        "models": SUPPORTED_GEMINI_MODELS,
+                    },
+                },
                 "default_model": DEFAULT_GROQ_MODEL,
                 "models": SUPPORTED_GROQ_MODELS,
             })
@@ -139,9 +165,14 @@ class TestbedWebHandler(BaseHTTPRequestHandler):
         turns = int(req.get("turns", 4))
         user_trust = req.get("user_trust", "medium")
         initial_p = float(req.get("initial_p", 2.0))
-        assistant_model = req.get("assistant_model") or DEFAULT_GROQ_MODEL
-        evaluator_model = req.get("evaluator_model") or DEFAULT_GROQ_MODEL
-        user_model = req.get("user_model") or DEFAULT_GROQ_MODEL
+        provider = req.get("provider", "groq").lower()
+        if provider not in ("groq", "gemini", "openrouter"):
+            provider = "groq"
+
+        default_mod = DEFAULT_GEMINI_MODEL if provider == "gemini" else DEFAULT_GROQ_MODEL
+        assistant_model = req.get("assistant_model") or default_mod
+        evaluator_model = req.get("evaluator_model") or default_mod
+        user_model = req.get("user_model") or default_mod
 
         custom_scenario = req.get("custom_scenario")
         if custom_scenario and isinstance(custom_scenario, dict):
@@ -159,21 +190,30 @@ class TestbedWebHandler(BaseHTTPRequestHandler):
         custom_user_message = req.get("custom_user_message")
 
         try:
-            assistant_key = os.environ.get("ASSISTANT_API_KEY")
-            user_key = os.environ.get("USER_API_KEY")
-            evaluator_key = os.environ.get("EVALUATOR_API_KEY")
+            if provider == "gemini":
+                gemini_key = os.environ.get("GEMINI_API_KEY")
+                if not gemini_key:
+                    self._send_error("GEMINI_API_KEY missing in .env", status=500)
+                    return
+                client = get_client("gemini", gemini_key)
+                evaluator_client = client
+                user_client = client
+            else:
+                assistant_key = os.environ.get("ASSISTANT_API_KEY")
+                user_key = os.environ.get("USER_API_KEY")
+                evaluator_key = os.environ.get("EVALUATOR_API_KEY")
 
-            if not assistant_key or not evaluator_key:
-                self._send_error("ASSISTANT_API_KEY or EVALUATOR_API_KEY missing in .env", status=500)
-                return
+                if not assistant_key or not evaluator_key:
+                    self._send_error("ASSISTANT_API_KEY or EVALUATOR_API_KEY missing in .env", status=500)
+                    return
 
-            if mode == "closed_loop" and not user_key:
-                self._send_error("USER_API_KEY missing in .env for closed-loop simulation", status=500)
-                return
+                if mode == "closed_loop" and not user_key:
+                    self._send_error("USER_API_KEY missing in .env for closed-loop simulation", status=500)
+                    return
 
-            client = get_client("groq", assistant_key)
-            evaluator_client = get_client("groq", evaluator_key)
-            user_client = get_client("groq", user_key) if user_key else client
+                client = get_client("groq", assistant_key)
+                evaluator_client = get_client("groq", evaluator_key)
+                user_client = get_client("groq", user_key) if user_key else client
 
             if mode == "single":
                 result = run_static_trial(

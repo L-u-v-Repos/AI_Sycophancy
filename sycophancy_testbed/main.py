@@ -16,7 +16,9 @@ from .client import get_client
 from .config import (
     DEFAULT_GROQ_MODEL,
     DEFAULT_OPENROUTER_MODEL,
+    DEFAULT_GEMINI_MODEL,
     SUPPORTED_GROQ_MODELS,
+    SUPPORTED_GEMINI_MODELS,
     PILOT_SCENARIOS,
     SCENARIOS,
 )
@@ -72,9 +74,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--provider",
-        choices=["groq", "openrouter"],
+        choices=["groq", "openrouter", "gemini"],
         default="groq",
-        help="LLM provider: groq (recommended free tier) or openrouter (default: groq)",
+        help="LLM provider: groq (recommended free tier), openrouter, or gemini (default: groq)",
     )
     parser.add_argument(
         "--api-key",
@@ -152,7 +154,7 @@ def parse_args() -> argparse.Namespace:
                         help="Judge key override; defaults to EVALUATOR_API_KEY in .env")
     parser.add_argument("--user-mode", choices=["llm", "controlled"], default="llm",
                         help="Closed-loop user: LLM bot (default) or legacy numerical simulation")
-    parser.add_argument("--user-provider", choices=["groq", "openrouter"], default=None,
+    parser.add_argument("--user-provider", choices=["groq", "openrouter", "gemini"], default=None,
                         help="User bot provider (defaults to assistant provider)")
     parser.add_argument("--user-api-key", default=None,
                         help="User bot key override; prefer USER_API_KEY in .env")
@@ -174,17 +176,35 @@ def main() -> None:
 
     args = parse_args()
 
-    default_model = DEFAULT_GROQ_MODEL if args.provider == "groq" else DEFAULT_OPENROUTER_MODEL
-    api_key = args.api_key or os.environ.get("ASSISTANT_API_KEY")
-    evaluator_key = args.evaluator_api_key or os.environ.get("EVALUATOR_API_KEY")
-    user_key = args.user_api_key or os.environ.get("USER_API_KEY")
+    if args.provider == "groq":
+        default_model = DEFAULT_GROQ_MODEL
+    elif args.provider == "gemini":
+        default_model = DEFAULT_GEMINI_MODEL
+    else:
+        default_model = DEFAULT_OPENROUTER_MODEL
+
+    if args.provider == "gemini":
+        gemini_env_key = os.environ.get("GEMINI_API_KEY")
+        api_key = args.api_key or gemini_env_key or os.environ.get("ASSISTANT_API_KEY")
+        evaluator_key = args.evaluator_api_key or gemini_env_key or os.environ.get("EVALUATOR_API_KEY")
+        user_key = args.user_api_key or gemini_env_key or os.environ.get("USER_API_KEY")
+    else:
+        api_key = args.api_key or os.environ.get("ASSISTANT_API_KEY")
+        evaluator_key = args.evaluator_api_key or os.environ.get("EVALUATOR_API_KEY")
+        user_key = args.user_api_key or os.environ.get("USER_API_KEY")
+
     if args.run != "none":
-        required_keys = {"ASSISTANT_API_KEY": api_key, "EVALUATOR_API_KEY": evaluator_key}
+        required_keys = {}
+        if not api_key:
+            required_keys["GEMINI_API_KEY" if args.provider == "gemini" else "ASSISTANT_API_KEY"] = api_key
+        if not evaluator_key:
+            required_keys["GEMINI_API_KEY" if args.provider == "gemini" else "EVALUATOR_API_KEY"] = evaluator_key
         if args.run == "closed_loop" and args.user_mode == "llm":
-            required_keys["USER_API_KEY"] = user_key
-        missing = [name for name, key in required_keys.items() if not key or not key.strip()]
-        if missing:
-            print("Error: set separate role keys in .env: " + ", ".join(missing))
+            if not user_key:
+                u_prov = args.user_provider or args.provider
+                required_keys["GEMINI_API_KEY" if u_prov == "gemini" else "USER_API_KEY"] = user_key
+        if required_keys:
+            print("Error: missing required API keys: " + ", ".join(required_keys.keys()))
             sys.exit(1)
 
     assistant_model = args.assistant_model or default_model
@@ -316,7 +336,9 @@ def main() -> None:
             user_client = get_client(provider=user_provider, api_key=user_key)
             user_model = args.user_model or (
                 assistant_model if user_provider == args.provider else
-                DEFAULT_GROQ_MODEL if user_provider == "groq" else DEFAULT_OPENROUTER_MODEL)
+                DEFAULT_GROQ_MODEL if user_provider == "groq" else
+                DEFAULT_GEMINI_MODEL if user_provider == "gemini" else
+                DEFAULT_OPENROUTER_MODEL)
             print(f"User bot: {user_provider} / {user_model}; trust={args.user_trust}")
         elif args.user_trust != "medium":
             raise ValueError("--user-trust applies only to --user-mode llm.")
