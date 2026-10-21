@@ -1,4 +1,4 @@
-"""Run each scenario × assistant condition × user trust once, saving each result."""
+"""Run each scenario × assistant condition × user sycophancy liking once."""
 import argparse
 import json
 import os
@@ -63,7 +63,7 @@ def main():
     config = {"provider": args.provider, "model": args.model,
               "turns": 6, "initial_p": 2.0, "evidence": "none", "seed": 42,
               "scenarios": [s.id for s in SCENARIOS], "conditions": CONDITIONS,
-              "trust_levels": CONDITIONS, "repetitions": 1}
+              "sycophancy_liking_levels": CONDITIONS, "repetitions": 1}
     manifest = output / "config.json"
     if manifest.exists() and json.loads(manifest.read_text()) != config:
         raise ValueError("Output directory contains a different experiment configuration.")
@@ -72,8 +72,8 @@ def main():
     total = len(SCENARIOS) * len(CONDITIONS) ** 2
     for scenario in SCENARIOS:
         for condition in CONDITIONS:
-            for trust in CONDITIONS:
-                name = f"{scenario.id}__{condition}__{trust}"
+            for liking in CONDITIONS:
+                name = f"{scenario.id}__{condition}__{liking}"
                 path = output / f"{name}.csv"
                 print(f"[{len(summaries) + 1}/{total}] {name}", flush=True)
                 if path.exists():
@@ -87,7 +87,7 @@ def main():
                             evaluator_model=args.model,
                             evaluator_client=clients["EVALUATOR"],
                             user_client=clients["USER"], user_model=args.model,
-                            scenario=scenario, condition=condition, user_trust=trust,
+                            scenario=scenario, condition=condition, user_sycophancy_liking=liking,
                             turns=6, initial_p=2.0, seed=42,
                         )
                     except Exception as exc:
@@ -113,12 +113,12 @@ def main():
                     print(f"  Saved 6 turns in {time.monotonic() - started:.1f}s", flush=True)
                 plot_trajectory(df, str(output / f"{name}.png"))
                 summaries.append({"scenario_id": scenario.id, "condition": condition,
-                                  "user_trust": trust, **summarize_trajectory(df)})
+                                  "user_sycophancy_liking": liking, **summarize_trajectory(df)})
                 pd.DataFrame(summaries).to_csv(output / "summary.csv", index=False)
     summary = pd.DataFrame(summaries)
-    summary.groupby(["condition", "user_trust"])[
+    summary.groupby(["condition", "user_sycophancy_liking"])[
         ["delta_p", "mean_assistant_H", "sycophantic_turns"]
-    ].mean().to_csv(output / "summary_by_condition_and_trust.csv")
+    ].mean().to_csv(output / "summary_by_condition_and_sycophancy_liking.csv")
     print(f"Completed {total} conversations. Results: {output}", flush=True)
 
 

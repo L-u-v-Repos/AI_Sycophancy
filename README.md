@@ -94,40 +94,41 @@ python -m sycophancy_testbed.main --run full --provider gemini
 ### Run a Closed-Loop Multi-Turn Simulation
 The user is now an LLM bot by default. It starts with the selected scenario's belief
 and generates its own messages and belief updates after each chatbot reply.
-Compare three independent conversations with low, medium, and high trust in the chatbot:
+Compare three independent conversations with low, medium, and high liking for sycophantic agreement:
 ```bash
-python -m sycophancy_testbed.main --run closed_loop --provider gemini --turns 6 --user-trust all --initial-p 2 --condition high
+python -m sycophancy_testbed.main --run closed_loop --provider gemini --turns 6 --user-sycophancy-liking all --initial-p 2 --condition high
 ```
 
 When using Groq, set `ASSISTANT_API_KEY`, `USER_API_KEY`, and `EVALUATOR_API_KEY` in `.env`.
 When using Gemini, set `GEMINI_API_KEY` in `.env`.
 CLI key overrides are `--api-key`, `--user-api-key`, and `--evaluator-api-key`.
 
-- `--user-trust low`: skeptical; needs convincing reasoning to change its belief.
-- `--user-trust medium`: weighs chatbot explanations against its existing belief.
-- `--user-trust high`: readily accepts the chatbot's stated position.
+- `--user-sycophancy-liking low`: dislikes flattery and unearned agreement; values candid, evidence-based replies.
+- `--user-sycophancy-liking medium`: appreciates warmth and validation while still valuing honesty.
+- `--user-sycophancy-liking high`: enjoys agreement, praise, and affirmation.
 - `--initial-p 2`: initial belief log-odds (about 88% probability of the scenario's
   false-belief proposition). Zero means uncertain; negative values reject it.
 - `--condition low|medium|high`: the chatbot's sycophancy instructions, independent
-  of the user's trust in it.
+  of the user's liking for sycophantic agreement.
 - `--scenario SCENARIO_ID`: selects the topic and initial belief proposition.
 
-Trust is held fixed in each conversation. Belief strength evolves through the user
-model's self-reports, not through the judge's score. These are simulated beliefs,
-and trust prompts do not guarantee a particular ordering of observed belief drift.
+Liking for sycophancy is held fixed in each conversation. Belief strength evolves through the user
+model's self-reports, not through the judge's score. These are simulated preferences and beliefs,
+and preference prompts do not guarantee a particular ordering of observed belief drift.
 The user bot is not given ground truth unless external conversational evidence is enabled
 with, for example, `--evidence step`. Mathematical evidence is available only with
 the legacy `--user-mode controlled` numerical user.
 
 Trajectory CSVs include both agents' dialogue, pre/post-reply belief values, belief
-change reasons, trust, and model metadata. The summary and plot include the update
-after the final chatbot reply. `--user-trust all` writes separate CSVs and plots
-for each trust level plus `closed_loop_summary.csv`.
+change reasons, sycophancy liking, and model metadata. The summary and plot include the update
+after the final chatbot reply. `--user-sycophancy-liking all` writes separate CSVs and plots
+for each liking level plus `closed_loop_summary.csv`.
 
 Static sanity/pilot/full experiments retain their controlled message templates.
 An LLM conversation uses one initial user call plus three calls per turn (chatbot,
-judge, and user reaction). Seeds are passed to the user model, but provider
-determinism is not guaranteed.
+judge, and user reaction). Seeds are passed to the user model except on Gemini,
+whose OpenAI-compatible endpoint rejects the seed parameter. Provider determinism
+is not guaranteed.
 
 API requests allow four retries and a 90-second request timeout. Provider
 `Retry-After` wait times are honored, including waits longer than 60 seconds.

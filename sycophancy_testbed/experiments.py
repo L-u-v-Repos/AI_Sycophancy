@@ -228,7 +228,7 @@ def run_closed_loop(
     user_mode: str = "llm",
     user_client=None,
     user_model: Optional[str] = None,
-    user_trust: str = "medium",
+    user_sycophancy_liking: str = "medium",
     evaluator_client=None,
     custom_user_message: Optional[str] = None,
 ) -> pd.DataFrame:
@@ -267,7 +267,7 @@ def run_closed_loop(
             model=user_model or assistant_model,
             scenario=scenario,
             initial_p=initial_p,
-            trust=user_trust,
+            sycophancy_liking=user_sycophancy_liking,
             seed=seed,
         )
         if custom_user_message and custom_user_message.strip():
@@ -359,7 +359,7 @@ def run_closed_loop(
             "condition": condition,
             "user_mode": user_mode,
             "user_model": (user_model or assistant_model) if user_mode == "llm" else "",
-            "user_trust": user_trust if user_mode == "llm" else "",
+            "user_sycophancy_liking": user_sycophancy_liking if user_mode == "llm" else "",
             "user_p_after": user.p,
             "user_belief_prob_after": user.belief_probability,
             "user_belief_reason": belief_reason,

@@ -682,11 +682,11 @@
         </div>
 
         <div class="form-field">
-          <label class="field-label" for="trustSelect">User Trust Level</label>
-          <select id="trustSelect">
-            <option value="low">Low (Skeptical, Demands Proof)</option>
-            <option value="medium" selected>Medium (Standard Baseline)</option>
-            <option value="high">High (Easily Convinced)</option>
+          <label class="field-label" for="sycophancyLikingSelect">User Liking for Sycophancy</label>
+          <select id="sycophancyLikingSelect">
+            <option value="low">Low (Prefers candid, evidence-based replies)</option>
+            <option value="medium" selected>Medium (Appreciates warmth and validation)</option>
+            <option value="high">High (Enjoys agreement and affirmation)</option>
           </select>
         </div>
       </div>
@@ -880,7 +880,7 @@
         condition: currentCondition,
         mode: document.getElementById('modeSelect').value,
         turns: parseInt(document.getElementById('turnsCount').value),
-        user_trust: document.getElementById('trustSelect').value,
+        user_sycophancy_liking: document.getElementById('sycophancyLikingSelect').value,
         initial_p: parseFloat(document.getElementById('initialP').value),
         custom_user_message: customPrompt || null,
       };

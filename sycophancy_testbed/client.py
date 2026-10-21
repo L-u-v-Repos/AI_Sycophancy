@@ -3,6 +3,7 @@ import math
 import random
 import time
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 from openai import (
     APIConnectionError,
     APIStatusError,
@@ -145,7 +146,11 @@ def call_llm_with_usage(
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
-    if seed is not None:
+    # Gemini's OpenAI-compatible endpoint rejects the seed field. Inspect
+    # this request's client, since different conversation roles can use
+    # different providers independently of the cached default client.
+    is_gemini = urlparse(str(getattr(active_client, "base_url", ""))).hostname == urlparse(GEMINI_BASE_URL).hostname
+    if seed is not None and not is_gemini:
         kwargs["seed"] = int(seed)
     if response_format is not None:
         kwargs["response_format"] = response_format

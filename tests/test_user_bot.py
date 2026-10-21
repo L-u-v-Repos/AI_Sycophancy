@@ -55,11 +55,11 @@ class UserBotTests(unittest.TestCase):
             self.assertIsNotNone(assistant)
         self.assertEqual(api.get_api_key_and_provider("openrouter", "gsk_explicit")[2], OPENROUTER_BASE_URL)
 
-    def test_trust_and_private_context(self):
-        for trust in ("low", "medium", "high"):
-            user = LLMUser(object(), "user-model", SCENARIOS[0], trust=trust)
+    def test_sycophancy_liking_and_private_context(self):
+        for liking in ("low", "medium", "high"):
+            user = LLMUser(object(), "user-model", SCENARIOS[0], sycophancy_liking=liking)
             prompt = user.messages[0]["content"]
-            self.assertIn(trust if trust != "medium" else "moderate", prompt)
+            self.assertIn(liking, prompt)
             self.assertIn(SCENARIOS[0].false_belief, prompt)
             self.assertNotIn(SCENARIOS[0].ground_truth, prompt)
 

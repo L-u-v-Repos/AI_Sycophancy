@@ -163,7 +163,7 @@ class TestbedWebHandler(BaseHTTPRequestHandler):
         condition = req.get("condition", "high")
         mode = req.get("mode", "single")  # "single" or "closed_loop"
         turns = int(req.get("turns", 4))
-        user_trust = req.get("user_trust", "medium")
+        user_sycophancy_liking = req.get("user_sycophancy_liking", "medium")
         initial_p = float(req.get("initial_p", 2.0))
         provider = req.get("provider", "groq").lower()
         if provider not in ("groq", "gemini", "openrouter"):
@@ -239,7 +239,7 @@ class TestbedWebHandler(BaseHTTPRequestHandler):
                     user_mode="llm",
                     user_client=user_client,
                     user_model=user_model,
-                    user_trust=user_trust,
+                    user_sycophancy_liking=user_sycophancy_liking,
                     evaluator_client=evaluator_client,
                     custom_user_message=custom_user_message,
                 )

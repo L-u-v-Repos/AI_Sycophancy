@@ -159,8 +159,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--user-api-key", default=None,
                         help="User bot key override; prefer USER_API_KEY in .env")
     parser.add_argument("--user-model", default=None, help="User bot model ID")
-    parser.add_argument("--user-trust", choices=["low", "medium", "high", "all"], default="medium",
-                        help="User trust in chatbot; all runs three independent conversations")
+    parser.add_argument("--user-sycophancy-liking", choices=["low", "medium", "high", "all"], default="medium",
+                        help="User liking for sycophantic agreement; all runs three independent conversations")
     parser.add_argument("--initial-p", type=float, default=2.0,
                         help="Initial log-odds of scenario belief (default 2, about 88%% probability)")
     parser.add_argument("--condition", choices=["low", "medium", "high"], default="high",
@@ -339,13 +339,13 @@ def main() -> None:
                 DEFAULT_GROQ_MODEL if user_provider == "groq" else
                 DEFAULT_GEMINI_MODEL if user_provider == "gemini" else
                 DEFAULT_OPENROUTER_MODEL)
-            print(f"User bot: {user_provider} / {user_model}; trust={args.user_trust}")
-        elif args.user_trust != "medium":
-            raise ValueError("--user-trust applies only to --user-mode llm.")
+            print(f"User bot: {user_provider} / {user_model}; sycophancy_liking={args.user_sycophancy_liking}")
+        elif args.user_sycophancy_liking != "medium":
+            raise ValueError("--user-sycophancy-liking applies only to --user-mode llm.")
 
-        trust_levels = ["low", "medium", "high"] if args.user_trust == "all" else [args.user_trust]
+        liking_levels = ["low", "medium", "high"] if args.user_sycophancy_liking == "all" else [args.user_sycophancy_liking]
         summaries = []
-        for trust in trust_levels:
+        for liking in liking_levels:
             traj_df = run_closed_loop(
                 client=client,
                 assistant_model=assistant_model,
@@ -362,22 +362,22 @@ def main() -> None:
                 user_mode=args.user_mode,
                 user_client=user_client,
                 user_model=user_model,
-                user_trust=trust,
+                user_sycophancy_liking=liking,
             )
             traj_df["user_provider"] = user_provider if args.user_mode == "llm" else ""
             traj_summary = summarize_trajectory(traj_df)
-            summaries.append({"user_trust": trust if args.user_mode == "llm" else "",
+            summaries.append({"user_sycophancy_liking": liking if args.user_mode == "llm" else "",
                               "condition": args.condition, **traj_summary})
-            print(f"\nTrajectory Summary ({trust} trust):")
+            print(f"\nTrajectory Summary ({liking} sycophancy liking):")
             for k, v in traj_summary.items():
                 print(f"  {k}: {v}")
 
             if args.verbose:
-                print(f"\n--- Trajectory Exchanges ({trust} trust) ---")
+                print(f"\n--- Trajectory Exchanges ({liking} sycophancy liking) ---")
                 for _, row in traj_df.iterrows():
-                    print_interaction_card(f"Turn {int(row['turn'])} ({trust} trust)", row.to_dict())
+                    print_interaction_card(f"Turn {int(row['turn'])} ({liking} sycophancy liking)", row.to_dict())
 
-            suffix = f"_{trust}" if args.user_trust == "all" else ""
+            suffix = f"_{liking}" if args.user_sycophancy_liking == "all" else ""
             traj_csv = os.path.join(args.output_dir, f"closed_loop_trajectory{suffix}.csv")
             traj_plot = os.path.join(args.output_dir, f"closed_loop_plot{suffix}.png")
             traj_df.to_csv(traj_csv, index=False)
