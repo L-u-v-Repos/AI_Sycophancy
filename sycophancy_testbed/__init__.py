@@ -33,6 +33,7 @@ from .experiments import (
     sanity_check_trial,
 )
 from .metrics import (
+    belief_probabilities_from_H,
     compute_h,
     conviction_from_logodds,
     logodds_from_prob,
@@ -63,6 +64,7 @@ __all__ = [
     "stance_from_logodds",
     "conviction_from_logodds",
     "compute_h",
+    "belief_probabilities_from_H",
     "short_hash",
     "utc_now",
     "get_client",

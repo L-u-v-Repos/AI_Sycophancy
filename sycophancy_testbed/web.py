@@ -17,6 +17,7 @@ if str(REPO_ROOT) not in sys.path:
 load_dotenv(REPO_ROOT / ".env")
 
 from sycophancy_testbed.config import (
+    BELIEF_H_MAX,
     SCENARIOS,
     DEFAULT_GROQ_MODEL,
     DEFAULT_GEMINI_MODEL,
@@ -139,6 +140,7 @@ class TestbedWebHandler(BaseHTTPRequestHandler):
             content = file_path.read_bytes()
             self.send_response(200)
             self.send_header("Content-Type", content_type or "text/plain")
+            self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(content)))
             self.end_headers()
             self.wfile.write(content)
@@ -164,7 +166,7 @@ class TestbedWebHandler(BaseHTTPRequestHandler):
         mode = req.get("mode", "single")  # "single" or "closed_loop"
         turns = int(req.get("turns", 4))
         user_sycophancy_liking = req.get("user_sycophancy_liking", "medium")
-        initial_p = float(req.get("initial_p", 2.0))
+        initial_belief_H = float(req.get("initial_belief_H", BELIEF_H_MAX))
         provider = req.get("provider", "groq").lower()
         if provider not in ("groq", "gemini", "openrouter"):
             provider = "groq"
@@ -222,9 +224,10 @@ class TestbedWebHandler(BaseHTTPRequestHandler):
                     evaluator_model=evaluator_model,
                     scenario=scenario,
                     condition=condition,
-                    p_user=initial_p,
+                    initial_belief_H=initial_belief_H,
                     evaluator_client=evaluator_client,
                     custom_user_message=custom_user_message,
+                    user_sycophancy_liking=user_sycophancy_liking,
                 )
                 self._send_json({"type": "single", "trial": result})
             else:
@@ -235,7 +238,7 @@ class TestbedWebHandler(BaseHTTPRequestHandler):
                     scenario=scenario,
                     condition=condition,
                     turns=turns,
-                    initial_p=initial_p,
+                    initial_belief_H=initial_belief_H,
                     user_mode="llm",
                     user_client=user_client,
                     user_model=user_model,
@@ -243,8 +246,7 @@ class TestbedWebHandler(BaseHTTPRequestHandler):
                     evaluator_client=evaluator_client,
                     custom_user_message=custom_user_message,
                 )
-                import pandas as pd
-                records = traj_df.where(pd.notnull(traj_df), None).to_dict(orient="records")
+                records = json.loads(traj_df.to_json(orient="records"))
                 self._send_json({"type": "closed_loop", "trajectory": records})
         except Exception as exc:
             self._send_error(f"Execution failed: {exc}", status=500)

@@ -61,7 +61,7 @@ def main():
                 raise ValueError(f"Missing {role}_API_KEY")
             clients[role] = get_client("groq", key)
     config = {"provider": args.provider, "model": args.model,
-              "turns": 6, "initial_p": 2.0, "evidence": "none", "seed": 42,
+              "turns": 6, "initial_belief_H": 5.0, "evidence": "none", "seed": 42,
               "scenarios": [s.id for s in SCENARIOS], "conditions": CONDITIONS,
               "sycophancy_liking_levels": CONDITIONS, "repetitions": 1}
     manifest = output / "config.json"
@@ -88,7 +88,7 @@ def main():
                             evaluator_client=clients["EVALUATOR"],
                             user_client=clients["USER"], user_model=args.model,
                             scenario=scenario, condition=condition, user_sycophancy_liking=liking,
-                            turns=6, initial_p=2.0, seed=42,
+                            turns=6, initial_belief_H=5.0, seed=42,
                         )
                     except Exception as exc:
                         # Never include credentials in a persisted error.
@@ -117,7 +117,7 @@ def main():
                 pd.DataFrame(summaries).to_csv(output / "summary.csv", index=False)
     summary = pd.DataFrame(summaries)
     summary.groupby(["condition", "user_sycophancy_liking"])[
-        ["delta_p", "mean_assistant_H", "sycophantic_turns"]
+        ["H"]
     ].mean().to_csv(output / "summary_by_condition_and_sycophancy_liking.csv")
     print(f"Completed {total} conversations. Results: {output}", flush=True)
 

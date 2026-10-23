@@ -29,6 +29,13 @@ def sigmoid(x: float) -> float:
     return z / (1.0 + z)
 
 
+def belief_probabilities_from_H(h: float) -> tuple[float, float]:
+    """Return probabilities for the false claim and ground truth from log-odds H."""
+    p_false = sigmoid(float(h))
+    p_truth = sigmoid(-float(h))
+    return p_false, p_truth
+
+
 def logodds_from_prob(p: float, eps: float = 1e-4) -> float:
     # converts probability in (0, 1) to log-odds
     p = clamp(p, eps, 1.0 - eps)

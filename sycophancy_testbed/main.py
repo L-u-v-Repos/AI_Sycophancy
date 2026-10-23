@@ -14,11 +14,13 @@ from .analysis import (
 )
 from .client import get_client
 from .config import (
+    DEFAULT_P_USER_GRID,
     DEFAULT_GROQ_MODEL,
     DEFAULT_OPENROUTER_MODEL,
     DEFAULT_GEMINI_MODEL,
     SUPPORTED_GROQ_MODELS,
     SUPPORTED_GEMINI_MODELS,
+    CONDITIONS,
     PILOT_SCENARIOS,
     SCENARIOS,
 )
@@ -37,15 +39,7 @@ from .plotting import (
 def print_interaction_card(title: str, data: dict) -> None:
     user_msg = data.get("user_message") or data.get("user_msg", "")
     assistant_resp = data.get("assistant_response") or data.get("assistant_reply", "")
-    h_score = float(data.get("H") if "H" in data else data.get("assistant_H", 0.0))
-    align = float(data.get("alignment_with_false_belief") if "alignment_with_false_belief" in data else data.get("alignment", 0.0))
-    contra = float(data.get("contradiction_of_false_belief") if "contradiction_of_false_belief" in data else data.get("contradiction", 0.0))
-    acc = float(data.get("accuracy_score") if "accuracy_score" in data else data.get("accuracy", 0.0))
-    notes = data.get("notes") or data.get("user_belief_reason", "")
-
-    # color code H-score: green for truth-telling, red for sycophancy, yellow for neutral
-    h_color = "\033[91m" if h_score > 0.2 else ("\033[92m" if h_score < -0.2 else "\033[93m")
-    reset = "\033[0m"
+    h_score = float(data.get("H", 0.0))
 
     border = "═" * 70
     print("\n" + border)
@@ -58,12 +52,17 @@ def print_interaction_card(title: str, data: dict) -> None:
     for line in str(assistant_resp).strip().splitlines():
         print(f"   {line}")
     print("\n[EVALUATOR GRADE]")
-    print(f"   Alignment with Falsehood:     {align:.2f}")
-    print(f"   Contradiction (Ground Truth):  {contra:.2f}")
-    print(f"   Combined H-Score:             {h_color}{h_score:+.2f}{reset}  (-1.0=Truth, +1.0=Sycophant)")
-    print(f"   Factual Accuracy:             {acc:.2f}")
-    if notes:
-        print(f"   Judge Justification:          {notes}")
+    user_h = data.get("user_H", data.get("initial_belief_H"))
+    if user_h is not None:
+        print(f"   After user message:     {float(user_h):+.2f}")
+        user_rationale = data.get("user_H_rationale", data.get("initial_belief_rationale", ""))
+        if user_rationale:
+            print(f"   User rationale:         {user_rationale}")
+    assistant_h = data.get("assistant_H", h_score)
+    print(f"   Assistant expressed stance: {float(assistant_h):+.2f}")
+    assistant_rationale = data.get("assistant_H_rationale", data.get("H_rationale", data.get("rationale", "")))
+    if assistant_rationale:
+        print(f"   Assistant stance rationale: {assistant_rationale}")
     print(border + "\n")
 
 
@@ -133,9 +132,8 @@ def parse_args() -> argparse.Namespace:
         choices=["mathematical", "conversational"],
         default="conversational",
         help=(
-            "How external evidence is applied in closed-loop: "
-            "'conversational' injects it as dialogue text, "
-            "'mathematical' applies it directly to belief state only (default: conversational)"
+            "Evidence mode for closed-loop. Evidence is provided in the dialogue so the user "
+            "and chatbot can consider it (default: conversational)"
         ),
     )
     parser.add_argument(
@@ -161,12 +159,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--user-model", default=None, help="User bot model ID")
     parser.add_argument("--user-sycophancy-liking", choices=["low", "medium", "high", "all"], default="medium",
                         help="User liking for sycophantic agreement; all runs three independent conversations")
-    parser.add_argument("--initial-p", type=float, default=2.0,
-                        help="Initial log-odds of scenario belief (default 2, about 88%% probability)")
+    parser.add_argument("--initial-belief", "--initial-p", dest="initial_belief_H", type=float, default=5.0,
+                        help="Opening belief H from -5 (near-certain ground-truth belief) to +5 (near-certain misconception; default +5)")
     parser.add_argument("--condition", choices=["low", "medium", "high"], default="high",
                         help="Assistant sycophancy condition for closed-loop runs")
     parser.add_argument("--verbose", action="store_true", default=False,
-                        help="Print full dialogue exchanges and judge evaluations live in terminal")
+                        help="Print the full dialogue exchanges and final H in terminal")
     return parser.parse_args()
 
 
@@ -265,8 +263,8 @@ def main() -> None:
     # --- run: pilot ---
     elif args.run == "pilot":
         pilot_scs = PILOT_SCENARIOS if not args.scenario else scenario_list
-        n_trials = len(pilot_scs) * 3 * 5
-        print(f"\n--- Pilot Experiment ({len(pilot_scs)} scenarios × 3 conditions × 5 beliefs = {n_trials} trials) ---")
+        n_trials = len(pilot_scs) * len(CONDITIONS) * len(DEFAULT_P_USER_GRID)
+        print(f"\n--- Pilot Experiment ({len(pilot_scs)} scenarios × {len(CONDITIONS)} conditions × {len(DEFAULT_P_USER_GRID)} H settings = {n_trials} trials) ---")
         checkpoint_file = os.path.join(args.output_dir, "pilot_trials.csv")
 
         df = run_static_experiment(
@@ -297,8 +295,8 @@ def main() -> None:
 
     # --- run: full ---
     elif args.run == "full":
-        n_trials = len(scenario_list) * 3 * 5
-        print(f"\n--- Full Experiment ({len(scenario_list)} scenarios × 3 conditions × 5 beliefs = {n_trials} trials) ---")
+        n_trials = len(scenario_list) * len(CONDITIONS) * len(DEFAULT_P_USER_GRID)
+        print(f"\n--- Full Experiment ({len(scenario_list)} scenarios × {len(CONDITIONS)} conditions × {len(DEFAULT_P_USER_GRID)} H settings = {n_trials} trials) ---")
         checkpoint_file = os.path.join(args.output_dir, "full_trials.csv")
 
         df = run_static_experiment(
@@ -354,7 +352,7 @@ def main() -> None:
                 scenario=scenario_list[0],
                 condition=args.condition,
                 turns=args.turns,
-                initial_p=args.initial_p,
+                initial_belief_H=args.initial_belief_H,
                 evidence_type=args.evidence,
                 evidence_mode=evidence_mode,
                 evidence_strength=evidence_strength,

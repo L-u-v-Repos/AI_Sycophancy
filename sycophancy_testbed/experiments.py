@@ -5,8 +5,10 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 from tqdm import tqdm
 
-from .client import call_llm, call_llm_with_usage
+from .client import call_llm
 from .config import (
+    BELIEF_H_MAX,
+    BELIEF_H_MIN,
     Scenario,
     SYSTEM_PROMPTS,
     SCENARIOS,
@@ -44,22 +46,33 @@ def run_static_trial(
     evaluator_model: str,
     scenario: Scenario,
     condition: str,
-    p_user: float,
+    initial_belief_H: float,
     assistant_temperature: float = 0.0,
     evaluator_client=None,
     custom_user_message: Optional[str] = None,
+    user_sycophancy_liking: str = "medium",
 ) -> Dict[str, Any]:
     if condition not in SYSTEM_PROMPTS:
         raise ValueError(f"Unknown condition '{condition}'. Must be one of: {list(SYSTEM_PROMPTS.keys())}")
 
-    user_stance_val = stance_from_logodds(p_user)
-    user_conviction_val = conviction_from_logodds(p_user)
+    if not BELIEF_H_MIN <= initial_belief_H <= BELIEF_H_MAX:
+        raise ValueError(f"initial_belief_H must be between {BELIEF_H_MIN:g} and {BELIEF_H_MAX:g}.")
+    user_stance_val = initial_belief_H / BELIEF_H_MAX
 
     system_prompt = SYSTEM_PROMPTS[condition]
     if custom_user_message and custom_user_message.strip():
         user_msg = custom_user_message.strip()
     else:
-        user_msg = generate_user_message(scenario, p_user=p_user, user_stance=user_stance_val)
+        user_msg = generate_user_message(scenario, p_user=0.0, user_stance=user_stance_val)
+
+    initial_eval = evaluate_response(
+        client=evaluator_client if evaluator_client is not None else client,
+        model=evaluator_model,
+        dialogue_text=f"User: {user_msg}",
+        ground_truth=scenario.ground_truth,
+        false_belief=scenario.false_belief,
+        latest_speaker="user",
+    )
 
     # record version hashes for reproducibility
     scenario_hash = short_hash(scenario)
@@ -67,7 +80,7 @@ def run_static_trial(
     userprompt_hash = short_hash(user_msg)
 
     # get assistant response with token usage
-    asst_result = call_llm_with_usage(
+    assistant_response = call_llm(
         client=client,
         model=assistant_model,
         messages=[
@@ -76,9 +89,6 @@ def run_static_trial(
         ],
         temperature=assistant_temperature,
     )
-    assistant_response = asst_result["content"]
-    asst_usage = asst_result["usage"]
-
     if not assistant_response:
         raise RuntimeError(
             f"Assistant returned an empty response for scenario={scenario.id}, condition={condition}"
@@ -88,25 +98,41 @@ def run_static_trial(
     eval_result = evaluate_response(
         client=evaluator_client if evaluator_client is not None else client,
         model=evaluator_model,
-        scenario=scenario,
-        user_msg=user_msg,
-        assistant_response=assistant_response,
+        dialogue_text=f"User: {user_msg}\nChatbot: {assistant_response}",
+        ground_truth=scenario.ground_truth,
+        false_belief=scenario.false_belief,
+        latest_speaker="assistant",
     )
 
     return {
         "scenario_id": scenario.id,
         "domain": scenario.domain,
         "condition": condition,
-        "p_user": p_user,
-        # user_stance: signed [-1, 1] — positive means user endorses false belief
-        "user_stance": user_stance_val,
-        # user_conviction: unsigned [0, 1] — certainty regardless of direction
-        "user_conviction": user_conviction_val,
+        "initial_belief_setting": initial_belief_H,
+        "initial_belief_H": initial_eval["H"],
+        "user_H": initial_eval["H"],
+        "user_p1": initial_eval["p1"],
+        "user_p2": initial_eval["p2"],
+        "user_p_false": initial_eval["p_false"],
+        "user_p_truth": initial_eval["p_truth"],
+        "user_H_rationale": initial_eval.get("rationale", ""),
+        "initial_belief_p_false": initial_eval["p_false"],
+        "initial_belief_p_truth": initial_eval["p_truth"],
+        "initial_belief_p1": initial_eval["p1"],
+        "initial_belief_p2": initial_eval["p2"],
+        "initial_belief_rationale": initial_eval.get("rationale", ""),
+        "H": eval_result["H"],
+        "assistant_H": eval_result["H"],
+        "assistant_p1": eval_result["p1"],
+        "assistant_p2": eval_result["p2"],
+        "assistant_p_false": eval_result["p_false"],
+        "assistant_p_truth": eval_result["p_truth"],
+        "assistant_H_rationale": eval_result.get("rationale", ""),
+        "p_false": eval_result["p_false"],
+        "p_truth": eval_result["p_truth"],
+        "H_rationale": eval_result.get("rationale", ""),
         "user_msg": user_msg,
         "assistant_response": assistant_response,
-        # token usage
-        "bot_prompt_tokens": asst_usage.get("prompt_tokens"),
-        "bot_completion_tokens": asst_usage.get("completion_tokens"),
         # versioning hashes
         "scenario_hash": scenario_hash,
         "sysprompt_hash": sysprompt_hash,
@@ -155,11 +181,15 @@ def run_static_experiment(
     if checkpoint_path and os.path.exists(checkpoint_path):
         try:
             existing_df = pd.read_csv(checkpoint_path)
-            records = existing_df.to_dict(orient="records")
-            for r in records:
-                key = (r["scenario_id"], r["condition"], round(float(r["p_user"]), 4))
-                completed_keys.add(key)
-            print(f"  resuming from checkpoint: {len(records)} trials already done")
+            if "initial_belief_H" in existing_df.columns and "H" in existing_df.columns:
+                records = existing_df.to_dict(orient="records")
+                for r in records:
+                    setting = r.get("initial_belief_setting", r["initial_belief_H"])
+                    key = (r["scenario_id"], r["condition"], round(float(setting), 4))
+                    completed_keys.add(key)
+                print(f"  resuming from checkpoint: {len(records)} trials already done")
+            else:
+                print("  checkpoint uses the previous evaluator format; starting fresh")
         except Exception as e:
             print(f"  could not load checkpoint ({e}), starting fresh")
 
@@ -181,7 +211,7 @@ def run_static_experiment(
             evaluator_model=evaluator_model,
             scenario=job["scenario"],
             condition=job["condition"],
-            p_user=job["p_user"],
+            initial_belief_H=job["p_user"],
             evaluator_client=evaluator_client,
         )
 
@@ -217,7 +247,7 @@ def run_closed_loop(
     scenario: Scenario,
     condition: str = "high",
     turns: int = 6,
-    initial_p: float = 2.0,
+    initial_belief_H: float = 5.0,
     alpha: float = 0.4,
     beta: float = 0.5,
     evidence_mode: str = "none",
@@ -233,18 +263,15 @@ def run_closed_loop(
     custom_user_message: Optional[str] = None,
 ) -> pd.DataFrame:
     """
-    Run a closed-loop multi-turn belief drift simulation.
+    Run the configured user and chatbot conversation, scoring the speaker after every message.
 
-    evidence_mode controls how external truth evidence is applied:
-      - 'none': no evidence
-      - 'mathematical': evidence updates user belief state directly (delta_p -= beta * E)
-        but is NOT injected into the conversation text
-      - 'conversational': evidence is injected as text into the dialogue
-        but does NOT directly update the belief state numerically
-    Keeping these modes separate prevents double-counting the same evidence.
+    Evidence, when enabled, is shown in the conversation. The evaluator scores the user's belief
+    after user messages and the assistant's expressed stance after assistant messages.
     """
     if turns < 1:
         raise ValueError("turns must be at least 1.")
+    if not BELIEF_H_MIN <= initial_belief_H <= BELIEF_H_MAX:
+        raise ValueError(f"initial_belief_H must be between {BELIEF_H_MIN:g} and {BELIEF_H_MAX:g}.")
     if condition not in SYSTEM_PROMPTS:
         raise ValueError(f"Unknown condition '{condition}'. Must be one of: {list(SYSTEM_PROMPTS.keys())}")
     if evidence_mode not in ("none", "mathematical", "conversational"):
@@ -256,8 +283,8 @@ def run_closed_loop(
 
     if user_mode not in ("llm", "controlled"):
         raise ValueError("user_mode must be llm or controlled.")
-    if user_mode == "llm" and evidence_mode == "mathematical":
-        raise ValueError("LLM users require conversational evidence; use --user-mode controlled for mathematical evidence.")
+    if evidence_mode == "mathematical":
+        evidence_mode = "conversational"
 
     # initialize the simulated user's belief state
     pending_user = None
@@ -266,23 +293,24 @@ def run_closed_loop(
             client=user_client if user_client is not None else client,
             model=user_model or assistant_model,
             scenario=scenario,
-            initial_p=initial_p,
+            initial_H=initial_belief_H,
             sycophancy_liking=user_sycophancy_liking,
             seed=seed,
         )
         if custom_user_message and custom_user_message.strip():
-            pending_user = user.seed_initial_message(custom_user_message.strip(), initial_p=initial_p)
+            pending_user = user.seed_initial_message(custom_user_message.strip(), initial_H=initial_belief_H)
         else:
             pending_user = user.start()
     else:
         user = ControlledUser(
-            initial_p=initial_p,
+            initial_p=initial_belief_H,
             alpha=alpha,
             beta=beta,
             noise_std=user_noise_std,
             seed=seed,
         )
-    evidence_schedule = make_evidence_schedule(turns, evidence_type if evidence_type != "none" else "constant", evidence_strength)
+    schedule_type = evidence_type if evidence_type != "none" else "constant"
+    evidence_schedule = make_evidence_schedule(turns, schedule_type, evidence_strength)
     system_prompt = SYSTEM_PROMPTS[condition]
 
     # conversation starts with the system prompt
@@ -290,12 +318,9 @@ def run_closed_loop(
         {"role": "system", "content": system_prompt}
     ]
     trajectory = []
+    evaluated_initial_H = None
 
     for t in range(turns):
-        current_p = user.p
-        current_stance = user.stance
-        current_conviction = user.conviction
-        current_prob = user.belief_probability
         ext_evidence_strength = evidence_schedule[t] if evidence_type != "none" else 0.0
 
         # conversational evidence: inject ground truth text into the user's dialogue message
@@ -311,11 +336,27 @@ def run_closed_loop(
                 user.messages.append({"role": "user", "content": evidence_text_for_msg})
         else:
             user_turn_msg = generate_user_message(
-                scenario=scenario, p_user=current_p,
-                evidence_text=evidence_text_for_msg, user_stance=current_stance,
+                scenario=scenario, p_user=user.p,
+                evidence_text=evidence_text_for_msg, user_stance=user.stance,
             )
 
         conversation_history.append({"role": "user", "content": user_turn_msg})
+
+        user_dialogue_text = "\n\n".join(
+            f"{entry['role'].capitalize()}: {entry['content']}"
+            for entry in conversation_history if entry["role"] != "system"
+        )
+        user_eval = evaluate_response(
+            client=evaluator_client if evaluator_client is not None else client,
+            model=evaluator_model,
+            dialogue_text=user_dialogue_text,
+            ground_truth=scenario.ground_truth,
+            false_belief=scenario.false_belief,
+            latest_speaker="user",
+        )
+        if t == 0:
+            initial_eval = user_eval
+            evaluated_initial_H = user_eval["H"]
 
         # get assistant reply in the ongoing conversation
         assistant_turn_reply = call_llm(
@@ -330,53 +371,55 @@ def run_closed_loop(
 
         conversation_history.append({"role": "assistant", "content": assistant_turn_reply})
 
-        # evaluate how sycophantic this turn's reply was
-        eval_turn = evaluate_response(
+        dialogue_text = "\n\n".join(
+            f"{entry['role'].capitalize()}: {entry['content']}"
+            for entry in conversation_history if entry["role"] != "system"
+        )
+        turn_eval = evaluate_response(
             client=evaluator_client if evaluator_client is not None else client,
             model=evaluator_model,
-            scenario=scenario,
-            user_msg=user_turn_msg,
-            assistant_response=assistant_turn_reply,
+            dialogue_text=dialogue_text,
+            ground_truth=scenario.ground_truth,
+            false_belief=scenario.false_belief,
+            latest_speaker="assistant",
         )
 
-        # update user belief:
-        # bot_stance is the evaluator's H score, used as a proxy for the bot's expressed position
-        # (+1 = bot fully endorsed false belief, -1 = bot fully contradicted it)
-        # mathematical evidence: only subtracts from belief state, NOT added to dialogue text
-        math_evidence = ext_evidence_strength if evidence_mode == "mathematical" else 0.0
-        belief_reason = ""
-        if user_mode == "llm":
+        if user_mode == "llm" and t < turns - 1:
             pending_user = user.observe(assistant_turn_reply)
-            belief_reason = pending_user["reason"]
-        else:
-            user.update(bot_stance=eval_turn["H"], external_evidence=math_evidence)
 
         trajectory.append({
             "turn": t + 1,
             "scenario_id": scenario.id,
-            "initial_belief": scenario.false_belief,
-            "initial_p": initial_p,
+            "initial_belief_H": evaluated_initial_H,
+            "initial_belief_p_false": initial_eval["p_false"],
+            "initial_belief_p_truth": initial_eval["p_truth"],
+            "initial_belief_p1": initial_eval["p1"],
+            "initial_belief_p2": initial_eval["p2"],
+            "initial_belief_rationale": initial_eval.get("rationale", ""),
+            "user_H": user_eval["H"],
+            "user_p1": user_eval["p1"],
+            "user_p2": user_eval["p2"],
+            "user_p_false": user_eval["p_false"],
+            "user_p_truth": user_eval["p_truth"],
+            "user_H_rationale": user_eval.get("rationale", ""),
             "condition": condition,
             "user_mode": user_mode,
             "user_model": (user_model or assistant_model) if user_mode == "llm" else "",
             "user_sycophancy_liking": user_sycophancy_liking if user_mode == "llm" else "",
-            "user_p_after": user.p,
-            "user_belief_prob_after": user.belief_probability,
-            "user_belief_reason": belief_reason,
-            "user_reaction": pending_user["message"] if pending_user else "",
-            "user_p": current_p,
-            "user_stance": current_stance,
-            "user_conviction": current_conviction,
-            "user_belief_prob": current_prob,
             "external_evidence": ext_evidence_strength,
             "evidence_mode": evidence_mode,
-            "assistant_H": eval_turn["H"],
-            "alignment": eval_turn["alignment_with_false_belief"],
-            "contradiction": eval_turn["contradiction_of_false_belief"],
-            "accuracy": eval_turn["accuracy_score"],
-            "reasoning": eval_turn["reasoning_quality"],
             "user_msg": user_turn_msg,
             "assistant_reply": assistant_turn_reply,
+            "H": turn_eval["H"],
+            "assistant_H": turn_eval["H"],
+            "assistant_p1": turn_eval["p1"],
+            "assistant_p2": turn_eval["p2"],
+            "p_false": turn_eval["p_false"],
+            "p_truth": turn_eval["p_truth"],
+            "H_rationale": turn_eval.get("rationale", ""),
+            "assistant_p_false": turn_eval["p_false"],
+            "assistant_p_truth": turn_eval["p_truth"],
+            "assistant_H_rationale": turn_eval.get("rationale", ""),
         })
 
     return pd.DataFrame(trajectory)
@@ -400,10 +443,10 @@ def sanity_check_trial(
         evaluator_model=evaluator_model,
         scenario=scenario,
         condition="low",
-        p_user=2.0,
+        initial_belief_H=5.0,
         evaluator_client=evaluator_client,
     )
-    print(f"  low  → H={res_low['H']:.2f}, alignment={res_low['alignment_with_false_belief']:.2f}")
+    print(f"  low  → initial H={res_low['initial_belief_H']:.2f}, final H={res_low['H']:.2f}")
 
     res_high = run_static_trial(
         client=client,
@@ -411,9 +454,9 @@ def sanity_check_trial(
         evaluator_model=evaluator_model,
         scenario=scenario,
         condition="high",
-        p_user=2.0,
+        initial_belief_H=5.0,
         evaluator_client=evaluator_client,
     )
-    print(f"  high → H={res_high['H']:.2f}, alignment={res_high['alignment_with_false_belief']:.2f}")
+    print(f"  high → initial H={res_high['initial_belief_H']:.2f}, final H={res_high['H']:.2f}")
 
     return {"low": res_low, "high": res_high}
