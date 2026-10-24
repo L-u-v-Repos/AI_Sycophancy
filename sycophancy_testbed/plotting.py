@@ -1,5 +1,6 @@
 import math
 import os
+from pathlib import Path
 import matplotlib
 # set non-interactive backend for headless execution
 matplotlib.use("Agg")
@@ -104,25 +105,38 @@ def plot_response_surface(
     plt.close(fig)
 
 
-def plot_trajectory(trajectory_df: pd.DataFrame, output_path: str) -> None:
-    # Show user belief after each user message and assistant expressed stance after each reply.
-    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-    fig, ax = plt.subplots(figsize=(12, 4.5), dpi=150)
-    turns = trajectory_df["turn"].tolist()
-    x_values = list(range(1, len(turns) * 2 + 1))
-    h_values = []
-    labels = []
-    for turn_number, (_, row) in zip(turns, trajectory_df.iterrows()):
-        h_values.extend([float(row["user_H"]), float(row["assistant_H"])])
-        labels.extend([f"User {turn_number}", f"Assistant {turn_number}"])
-    ax.plot(x_values, h_values, marker="o", color="#2b5c8f", linewidth=2.2)
-    ax.set_xticks(x_values, labels, rotation=35, ha="right")
-    ax.set_ylabel("H (−5 to +5)", fontsize=11)
-    ax.set_ylim(-5.25, 5.25)
-    ax.axhline(0, color="gray", linestyle="--", alpha=0.7)
-    ax.set_title("User Belief and Assistant Expressed Stance", fontsize=12, fontweight="bold")
-    ax.grid(True, axis="y", linestyle=":", alpha=0.6)
+def plot_trajectory(trajectory_df: pd.DataFrame, output_path: str) -> tuple[str, str]:
+    """Save separate user and assistant charts; return their paths in that order.
 
-    plt.tight_layout()
-    plt.savefig(output_path)
-    plt.close(fig)
+    output_path supplies the filename stem: plot.png produces plot_user.png and
+    plot_assistant.png. Both charts use the same turn axis and H limits.
+    """
+    required = {"turn", "user_H", "assistant_H"}
+    missing = required - set(trajectory_df.columns)
+    if missing or trajectory_df.empty:
+        raise ValueError(f"Trajectory requires nonempty turn, user_H, and assistant_H columns; missing: {missing}")
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    turns = trajectory_df["turn"].tolist()
+    paths = []
+    for speaker, title, color in (
+        ("user", "User Belief Across Turns", "#2b5c8f"),
+        ("assistant", "Assistant Expressed Stance Across Turns", "#c26724"),
+    ):
+        path = output.with_name(f"{output.stem}_{speaker}{output.suffix or '.png'}")
+        fig, ax = plt.subplots(figsize=(9, 4.5), dpi=150)
+        try:
+            ax.plot(turns, trajectory_df[f"{speaker}_H"].astype(float), marker="o", color=color, linewidth=2.2)
+            ax.set_xticks(turns)
+            ax.set_xlabel("Dialogue turn", fontsize=11)
+            ax.set_ylabel(f"{speaker}_H (−5 to +5)", fontsize=11)
+            ax.set_ylim(-5.25, 5.25)
+            ax.axhline(0, color="gray", linestyle="--", alpha=0.7)
+            ax.set_title(title, fontsize=12, fontweight="bold")
+            ax.grid(True, axis="y", linestyle=":", alpha=0.6)
+            fig.tight_layout()
+            fig.savefig(path)
+        finally:
+            plt.close(fig)
+        paths.append(str(path))
+    return paths[0], paths[1]

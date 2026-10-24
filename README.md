@@ -56,11 +56,12 @@ From the web console, you can:
    - **Groq Cloud (Default)**: Set three separate keys to maximize rate limits:
      `ASSISTANT_API_KEY` (chatbot), `USER_API_KEY` (user bot), and `EVALUATOR_API_KEY` (judge).
    - **Google Gemini**: Set `GEMINI_API_KEY`. The testbed automatically routes requests to Google Gemini with zero code changes when toggled.
+   - **OpenRouter**: Set `OPENROUTER_API_KEY` for the web console. CLI runs use the role keys above with `--provider openrouter`.
 
 ## Provider & Key Toggle
 
-The testbed features a toggle system between **Groq Cloud** and **Google Gemini**:
-- **Interactive Web UI**: Switch between providers anytime using the `Provider / Key: [ Groq Cloud ] [ Google Gemini ]` pill toggle in the **Evaluation Setup** header. Selecting a provider automatically updates the target model dropdown to its supported models (e.g. `gemini-flash-lite-latest`, `gemini-3.1-flash-lite`, `gemini-3.8-flash`).
+The web console supports **Groq Cloud**, **Google Gemini**, and **OpenRouter**:
+- **Interactive Web UI**: Switch providers using the `Provider / Key` toggle in the **Evaluation Setup** header. Selecting a provider updates the target model dropdown to its configured model presets. OpenRouter defaults to `openrouter/free`.
 - **CLI Workflows**: Pass `--provider gemini` to `main.py` or `scripts/run_all_once.py`. When `--provider gemini` is passed, `GEMINI_API_KEY` is loaded automatically for all roles.
 
 ## Command-Line Usage
@@ -132,9 +133,35 @@ with, for example, `--evidence step`. Evidence is included in the dialogue for t
 
 Trajectory CSVs include both agents' dialogue, user H after user messages, assistant H after assistant
 messages, each evaluator rationale, derived probabilities, sycophancy liking, and model metadata. The
-summary includes the opening user belief, final user belief, and final assistant expressed stance; the
-plot shows both scores after each message. `--user-sycophancy-liking all` writes separate CSVs and plots
+CSV keeps the requested opening H and its p1/p2 percentages separate from the evaluator's H for the
+user's actual opening message. The summary includes the opening user belief, final user belief, and final assistant expressed stance; the
+plots show `user_H` and `assistant_H` separately across dialogue turns, using the same −5 to +5 axis.
+For example, `closed_loop_plot_user.png` contains user beliefs and
+`closed_loop_plot_assistant.png` contains assistant expressed stances.
+`--user-sycophancy-liking all` writes separate CSVs and plot pairs
 for each liking level plus `closed_loop_summary.csv`.
+
+To generate the separate plots from existing saved CSVs without calling any model:
+```bash
+python scripts/plot_saved_trajectories.py results
+# Or pass a single trajectory CSV instead of the directory.
+```
+Historical combined PNGs remain available; new runs create the separate plots.
+
+The LLM user's opening instructions provide the question, the claim, and a qualitative
+starting stance. They withhold the ground-truth answer and numerical H/probabilities.
+A negative starting H instructs the user to reject the claim without providing the answer.
+Custom opening messages are used as supplied and may contain their author's evidence.
+
+Legacy `--user-mode controlled` uses a numerical update after each assistant reply:
+`p_next = p + alpha * tanh(assistant_H / 2) - beta * evidence_strength + noise`.
+Here `p` is the simulation's internal log-odds state, recorded as
+`controlled_belief_before` and `controlled_belief_after`; it is separate from evaluator H.
+It can extend beyond the evaluator's score range. Mathematical evidence is supported
+only in controlled mode; LLM users require conversational evidence.
+
+The files in `sample_results/` use an older −1 to +1 alignment-minus-contradiction
+metric. They are historical examples and cannot be compared directly with current H.
 
 Static sanity/pilot/full experiments retain their controlled message templates.
 An LLM conversation uses one user call and one chatbot call per dialogue turn, plus one evaluator call

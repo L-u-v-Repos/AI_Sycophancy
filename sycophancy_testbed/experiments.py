@@ -16,7 +16,7 @@ from .config import (
     CONDITIONS,
 )
 from .evaluator import evaluate_response
-from .metrics import conviction_from_logodds, short_hash, stance_from_logodds
+from .metrics import belief_probabilities_from_H, short_hash, stance_from_logodds
 from .user_agent import ControlledUser, LLMUser, generate_user_message
 
 
@@ -265,8 +265,9 @@ def run_closed_loop(
     """
     Run the configured user and chatbot conversation, scoring the speaker after every message.
 
-    Evidence, when enabled, is shown in the conversation. The evaluator scores the user's belief
-    after user messages and the assistant's expressed stance after assistant messages.
+    Conversational evidence is shown in the dialogue. Controlled users also support
+    mathematical evidence applied to their internal state. The evaluator scores the user's
+    belief after user messages and the assistant's expressed stance after assistant messages.
     """
     if turns < 1:
         raise ValueError("turns must be at least 1.")
@@ -283,8 +284,8 @@ def run_closed_loop(
 
     if user_mode not in ("llm", "controlled"):
         raise ValueError("user_mode must be llm or controlled.")
-    if evidence_mode == "mathematical":
-        evidence_mode = "conversational"
+    if evidence_mode == "mathematical" and user_mode == "llm":
+        raise ValueError("Use conversational evidence with an LLM user.")
 
     # initialize the simulated user's belief state
     pending_user = None
@@ -319,9 +320,11 @@ def run_closed_loop(
     ]
     trajectory = []
     evaluated_initial_H = None
+    requested_initial_p1, requested_initial_p2 = belief_probabilities_from_H(initial_belief_H)
 
     for t in range(turns):
         ext_evidence_strength = evidence_schedule[t] if evidence_type != "none" else 0.0
+        controlled_belief_before = user.p if user_mode == "controlled" else None
 
         # conversational evidence: inject ground truth text into the user's dialogue message
         evidence_text_for_msg = None
@@ -386,10 +389,18 @@ def run_closed_loop(
 
         if user_mode == "llm" and t < turns - 1:
             pending_user = user.observe(assistant_turn_reply)
+        elif user_mode == "controlled":
+            user.update(
+                bot_stance=stance_from_logodds(turn_eval["H"]),
+                external_evidence=ext_evidence_strength,
+            )
 
         trajectory.append({
             "turn": t + 1,
             "scenario_id": scenario.id,
+            "initial_belief_setting": initial_belief_H,
+            "initial_belief_setting_p1": requested_initial_p1,
+            "initial_belief_setting_p2": requested_initial_p2,
             "initial_belief_H": evaluated_initial_H,
             "initial_belief_p_false": initial_eval["p_false"],
             "initial_belief_p_truth": initial_eval["p_truth"],
@@ -404,6 +415,8 @@ def run_closed_loop(
             "user_H_rationale": user_eval.get("rationale", ""),
             "condition": condition,
             "user_mode": user_mode,
+            "controlled_belief_before": controlled_belief_before,
+            "controlled_belief_after": user.p if user_mode == "controlled" else None,
             "user_model": (user_model or assistant_model) if user_mode == "llm" else "",
             "user_sycophancy_liking": user_sycophancy_liking if user_mode == "llm" else "",
             "external_evidence": ext_evidence_strength,

@@ -74,9 +74,10 @@ class TestbedWebHandler(BaseHTTPRequestHandler):
             ]
             assistant_key = os.environ.get("ASSISTANT_API_KEY")
             gemini_key = os.environ.get("GEMINI_API_KEY")
+            openrouter_key = os.environ.get("OPENROUTER_API_KEY")
             self._send_json({
                 "scenarios": scenarios_data,
-                "default_provider": "gemini" if gemini_key and not assistant_key else "groq",
+                "default_provider": "groq" if assistant_key else "gemini" if gemini_key else "openrouter" if openrouter_key else "groq",
                 "providers": {
                     "groq": {
                         "name": "Groq Cloud",
@@ -89,6 +90,12 @@ class TestbedWebHandler(BaseHTTPRequestHandler):
                         "available": bool(gemini_key),
                         "default_model": DEFAULT_GEMINI_MODEL,
                         "models": SUPPORTED_GEMINI_MODELS,
+                    },
+                    "openrouter": {
+                        "name": "OpenRouter",
+                        "available": bool(openrouter_key),
+                        "default_model": PROVIDER_DEFAULT_MODELS["openrouter"],
+                        "models": PROVIDER_MODELS["openrouter"],
                     },
                 },
                 "default_model": DEFAULT_GROQ_MODEL,
@@ -171,7 +178,7 @@ class TestbedWebHandler(BaseHTTPRequestHandler):
         if provider not in ("groq", "gemini", "openrouter"):
             provider = "groq"
 
-        default_mod = DEFAULT_GEMINI_MODEL if provider == "gemini" else DEFAULT_GROQ_MODEL
+        default_mod = PROVIDER_DEFAULT_MODELS[provider]
         assistant_model = req.get("assistant_model") or default_mod
         evaluator_model = req.get("evaluator_model") or default_mod
         user_model = req.get("user_model") or default_mod
@@ -192,12 +199,13 @@ class TestbedWebHandler(BaseHTTPRequestHandler):
         custom_user_message = req.get("custom_user_message")
 
         try:
-            if provider == "gemini":
-                gemini_key = os.environ.get("GEMINI_API_KEY")
-                if not gemini_key:
-                    self._send_error("GEMINI_API_KEY missing in .env", status=500)
+            if provider in ("gemini", "openrouter"):
+                key_name = "GEMINI_API_KEY" if provider == "gemini" else "OPENROUTER_API_KEY"
+                provider_key = os.environ.get(key_name)
+                if not provider_key:
+                    self._send_error(f"{key_name} missing in .env", status=500)
                     return
-                client = get_client("gemini", gemini_key)
+                client = get_client(provider, provider_key)
                 evaluator_client = client
                 user_client = client
             else:

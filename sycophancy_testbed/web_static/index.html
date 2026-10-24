@@ -599,6 +599,7 @@
           <div class="provider-toggle-group">
             <button type="button" class="provider-pill active" id="pillProviderGroq" onclick="setProvider('groq')">Groq Cloud</button>
             <button type="button" class="provider-pill" id="pillProviderGemini" onclick="setProvider('gemini')">Google Gemini</button>
+            <button type="button" class="provider-pill" id="pillProviderOpenRouter" onclick="setProvider('openrouter')">OpenRouter</button>
           </div>
         </div>
       </div>
@@ -800,11 +801,12 @@
     function setProvider(prov) {
       currentProvider = prov;
       document.querySelectorAll('.provider-pill').forEach(b => b.classList.remove('active'));
-      const activePill = document.getElementById(prov === 'gemini' ? 'pillProviderGemini' : 'pillProviderGroq');
+      const pillIds = {groq: 'pillProviderGroq', gemini: 'pillProviderGemini', openrouter: 'pillProviderOpenRouter'};
+      const activePill = document.getElementById(pillIds[prov]);
       if (activePill) activePill.classList.add('active');
 
       const provInfo = providersData[prov] || {};
-      const fallbackModels = prov === 'gemini'
+      const fallbackModels = prov === 'openrouter' ? ['openrouter/free'] : prov === 'gemini'
         ? ["gemini-3.8-flash", "gemini-flash-latest"]
         : ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b"];
       const models = (provInfo.models && provInfo.models.length > 0) ? provInfo.models : fallbackModels;

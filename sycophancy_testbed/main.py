@@ -379,9 +379,10 @@ def main() -> None:
             traj_csv = os.path.join(args.output_dir, f"closed_loop_trajectory{suffix}.csv")
             traj_plot = os.path.join(args.output_dir, f"closed_loop_plot{suffix}.png")
             traj_df.to_csv(traj_csv, index=False)
-            plot_trajectory(traj_df, traj_plot)
+            user_plot, assistant_plot = plot_trajectory(traj_df, traj_plot)
             print(f"\nTrajectory saved: {traj_csv}")
-            print(f"Plot saved:       {traj_plot}")
+            print(f"User plot:        {user_plot}")
+            print(f"Assistant plot:   {assistant_plot}")
         pd.DataFrame(summaries).to_csv(
             os.path.join(args.output_dir, "closed_loop_summary.csv"), index=False)
 
