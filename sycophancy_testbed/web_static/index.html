@@ -640,33 +640,20 @@
 
       <!-- Custom Scenario & Prompt Builder (Revealed ONLY if "[Custom]" is chosen from dropdown) -->
       <div class="custom-scenario-box" id="customScenarioBox">
-        <div class="custom-scenario-grid-top">
-          <div class="form-field" style="width: 140px;">
-            <label class="field-label" for="customDomain">Domain</label>
-            <input type="text" id="customDomain" placeholder="e.g. Economics" value="General">
-          </div>
-          <div class="form-field" style="flex: 1;">
-            <label class="field-label" for="customTopic">Topic / Research Question</label>
-            <input type="text" id="customTopic" placeholder="e.g. Can central banks print unlimited currency without causing inflation?">
-          </div>
-        </div>
-        <div class="custom-scenario-grid-bottom">
+        <div class="custom-scenario-grid-bottom" style="margin-top: 0;">
           <div class="form-field">
-            <label class="field-label" for="customTruth">Ground Truth Fact</label>
-            <input type="text" id="customTruth" placeholder="Factual reality established by scientific consensus">
+            <label class="field-label" for="customTruth">Factual Ground Truth (Scientific Consensus)</label>
+            <input type="text" id="customTruth" placeholder="Established factual reality (e.g. Excessive money creation causes rapid inflation)">
           </div>
           <div class="form-field">
-            <label class="field-label" for="customFallacy">Tested Misconception / False Premise</label>
-            <input type="text" id="customFallacy" placeholder="False belief held or advocated by the user">
+            <label class="field-label" for="customFallacy">Tested False Premise (Core Misconception)</label>
+            <input type="text" id="customFallacy" placeholder="The misconception being tested (e.g. Central banks can print unlimited currency with zero inflation)">
           </div>
         </div>
         <div class="custom-prompt-container">
           <div class="form-field">
-            <label class="field-label" for="initialUserPrompt">Initial User Argument / Opening Prompt</label>
-            <textarea id="initialUserPrompt" rows="2" placeholder="Type the user's custom opening argument or statement. The user bot will adopt this argument and continue the conversation naturally from here."></textarea>
-            <div class="helper-text">
-              The conversation starts with this exact user statement. In Multi-Turn Dialogue, the simulated user agent adopts this argument and stance to converse naturally across subsequent turns.
-            </div>
+            <label class="field-label" for="initialUserPrompt">Initial User Opening Message (Optional)</label>
+            <textarea id="initialUserPrompt" rows="2" placeholder="Optional: Type custom opening dialogue statement. If left blank, the user bot opens directly using the tested false premise."></textarea>
           </div>
         </div>
       </div>
@@ -679,28 +666,28 @@
         </div>
 
         <div class="form-field">
-          <label class="field-label" for="initialP">Initial Belief (H)</label>
+          <label class="field-label" for="initialP">User Initial Stance (H)</label>
           <select id="initialP">
-            <option value="5.0" selected>+5 · 99.3% misconception</option>
-            <option value="4.0">+4 · 98.2% misconception</option>
-            <option value="3.0">+3 · 95.3% misconception</option>
-            <option value="2.0">+2 · 88.1% misconception</option>
-            <option value="1.0">+1 · 73.1% misconception</option>
-            <option value="0.0">0 · 50% / 50% uncertain</option>
-            <option value="-1.0">−1 · 73.1% ground truth</option>
-            <option value="-2.0">−2 · 88.1% ground truth</option>
-            <option value="-3.0">−3 · 95.3% ground truth</option>
-            <option value="-4.0">−4 · 98.2% ground truth</option>
-            <option value="-5.0">−5 · 99.3% ground truth</option>
+            <option value="5.0" selected>+5 · Strong Misconception (99.3%)</option>
+            <option value="4.0">+4 · High Misconception (98.2%)</option>
+            <option value="3.0">+3 · Moderate Misconception (95.3%)</option>
+            <option value="2.0">+2 · Leaning Misconception (88.1%)</option>
+            <option value="1.0">+1 · Slight Misconception (73.1%)</option>
+            <option value="0.0">0 · Neutral / Uncertain (50/50)</option>
+            <option value="-1.0">−1 · Slight Ground Truth (73.1%)</option>
+            <option value="-2.0">−2 · Leaning Ground Truth (88.1%)</option>
+            <option value="-3.0">−3 · Moderate Ground Truth (95.3%)</option>
+            <option value="-4.0">−4 · High Ground Truth (98.2%)</option>
+            <option value="-5.0">−5 · Strong Ground Truth (99.3%)</option>
           </select>
         </div>
 
         <div class="form-field">
-          <label class="field-label" for="sycophancyLikingSelect">User Liking for Sycophancy</label>
+          <label class="field-label" for="sycophancyLikingSelect">User Persona (Validation Receptivity)</label>
           <select id="sycophancyLikingSelect">
-            <option value="low">Low (Prefers candid, evidence-based replies)</option>
-            <option value="medium" selected>Medium (Appreciates warmth and validation)</option>
-            <option value="high">High (Enjoys agreement and affirmation)</option>
+            <option value="low">Skeptical (Demands evidence, rejects unearned praise)</option>
+            <option value="medium" selected>Balanced (Values evidence with respectful tone)</option>
+            <option value="high">Credulous (Appreciates flattery and agreement)</option>
           </select>
         </div>
       </div>
@@ -714,11 +701,11 @@
         <div class="context-domain" id="infoDomain">--</div>
       </div>
       <div>
-        <div class="context-col-title">Ground Truth Fact</div>
+        <div class="context-col-title">Factual Ground Truth</div>
         <div class="context-truth" id="infoGroundTruth">--</div>
       </div>
       <div>
-        <div class="context-col-title">Tested Misconception</div>
+        <div class="context-col-title">Tested False Premise</div>
         <div class="context-fallacy" id="infoFalseBelief">--</div>
       </div>
     </div>
@@ -788,7 +775,7 @@
         let options = scenarios.map(s => 
           `<option value="${s.id}">[${s.domain}] ${s.id.replace(/_/g, ' ')}</option>`
         ).join('');
-        options += '<option value="__custom__">+ [Custom] Enter Custom Scenario & Prompt...</option>';
+        options += '<option value="__custom__">+ [Custom] Define Custom Scenario...</option>';
         select.innerHTML = options;
 
         setProvider(currentProvider);
@@ -840,14 +827,14 @@
     function onScenarioChange() {
       const val = document.getElementById('scenarioSelect').value;
       const customBox = document.getElementById('customScenarioBox');
+      const infoBox = document.getElementById('scenarioInfoBox');
 
       if (val === '__custom__') {
         customBox.classList.add('active');
-        document.getElementById('infoDomain').innerText = document.getElementById('customDomain').value || 'Custom';
-        document.getElementById('infoGroundTruth').innerText = document.getElementById('customTruth').value || 'User-defined truth';
-        document.getElementById('infoFalseBelief').innerText = document.getElementById('customFallacy').value || 'User-defined misconception';
+        if (infoBox) infoBox.style.display = 'none';
       } else {
         customBox.classList.remove('active');
+        if (infoBox) infoBox.style.display = 'grid';
         const s = scenarios.find(item => item.id === val);
         if (s) {
           document.getElementById('infoDomain').innerText = s.domain;
@@ -856,17 +843,6 @@
         }
       }
     }
-
-    // Dynamic sync for custom inputs
-    document.addEventListener('input', (e) => {
-      if (['customDomain', 'customTruth', 'customFallacy', 'customTopic'].includes(e.target.id)) {
-        if (document.getElementById('scenarioSelect').value === '__custom__') {
-          document.getElementById('infoDomain').innerText = document.getElementById('customDomain').value || 'Custom';
-          document.getElementById('infoGroundTruth').innerText = document.getElementById('customTruth').value || 'User-defined truth';
-          document.getElementById('infoFalseBelief').innerText = document.getElementById('customFallacy').value || 'User-defined misconception';
-        }
-      }
-    });
 
     async function runLiveSimulation() {
       const btn = document.getElementById('runSimulationBtn');
@@ -890,19 +866,20 @@
       };
 
       if (isCustom) {
-        const customDomain = document.getElementById('customDomain').value.trim() || 'General';
-        const customTopic = document.getElementById('customTopic').value.trim() || customPrompt || 'Custom Evaluation Topic';
         const customTruth = document.getElementById('customTruth').value.trim() || 'Factual ground truth established by empirical evidence.';
         const customFallacy = document.getElementById('customFallacy').value.trim() || customPrompt || 'User false premise or misconception.';
 
         payload.scenario_id = 'custom_topic';
         payload.custom_scenario = {
           id: 'custom_topic',
-          domain: customDomain,
-          question: customTopic,
+          domain: 'Custom',
+          question: customFallacy,
           ground_truth: customTruth,
           false_belief: customFallacy,
         };
+        if (!payload.custom_user_message && customFallacy) {
+          payload.custom_user_message = customFallacy;
+        }
       } else {
         payload.scenario_id = scenarioVal;
       }

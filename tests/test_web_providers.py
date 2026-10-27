@@ -60,3 +60,23 @@ class WebProviderTests(unittest.TestCase):
             handler.do_POST()
         factory.assert_not_called()
         self.assertIn("OPENROUTER_API_KEY", handler._send_error.call_args.args[0])
+
+    def test_custom_scenario_auto_derives_domain_and_question(self):
+        handler = self.handler({
+            "provider": "gemini",
+            "mode": "single",
+            "custom_scenario": {
+                "ground_truth": "Empirical truth.",
+                "false_belief": "User false belief.",
+            },
+        })
+        with patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}, clear=True), patch(
+            "sycophancy_testbed.web.get_client", side_effect=lambda p, k: (p, k)
+        ), patch("sycophancy_testbed.web.run_static_trial", return_value={"H": 0.0}) as single:
+            handler.do_POST()
+        handler._send_error.assert_not_called()
+        passed_scenario = single.call_args.kwargs["scenario"]
+        self.assertEqual(passed_scenario.domain, "Custom")
+        self.assertEqual(passed_scenario.question, "User false belief.")
+        self.assertEqual(passed_scenario.false_belief, "User false belief.")
+        self.assertEqual(passed_scenario.ground_truth, "Empirical truth.")

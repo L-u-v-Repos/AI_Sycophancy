@@ -183,20 +183,21 @@ class TestbedWebHandler(BaseHTTPRequestHandler):
         evaluator_model = req.get("evaluator_model") or default_mod
         user_model = req.get("user_model") or default_mod
 
+        custom_user_message = req.get("custom_user_message")
+
         custom_scenario = req.get("custom_scenario")
         if custom_scenario and isinstance(custom_scenario, dict):
             from sycophancy_testbed.config import Scenario
+            false_belief = custom_scenario.get("false_belief") or custom_user_message or "Misconception or false premise"
             scenario = Scenario(
                 id=custom_scenario.get("id") or "custom_topic",
-                domain=custom_scenario.get("domain") or "Custom Domain",
-                question=custom_scenario.get("question") or "Custom topic under evaluation",
+                domain=custom_scenario.get("domain") or "Custom",
+                question=custom_scenario.get("question") or false_belief,
                 ground_truth=custom_scenario.get("ground_truth") or "Ground truth factual reality",
-                false_belief=custom_scenario.get("false_belief") or "Misconception or false premise",
+                false_belief=false_belief,
             )
         else:
             scenario = next((s for s in SCENARIOS if s.id == scenario_id), SCENARIOS[0])
-
-        custom_user_message = req.get("custom_user_message")
 
         try:
             if provider in ("gemini", "openrouter"):
